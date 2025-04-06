@@ -1,4 +1,4 @@
-# QQ Plugin Injector 
+# QQ Plugin Injector
 
 [![License: LGPL v3](https://img.shields.io/badge/License-LGPL_v3-blue.svg)](https://www.gnu.org/licenses/lgpl-3.0)
 ![Java Version](https://img.shields.io/badge/Java-11%2B-blue)
@@ -33,9 +33,9 @@
 
 ### 1.1.2 - 2025-7-7
 **修复**
-- 当传输给Java层的编译器钩子数据大于65536字节， 
-自动截断并且先发送给Java端后自动返回源数据，Java端无权修改大于65536字节的源代码的代码，
-并且添加了当返回空白字符时自动使用源数据，修改地址在 *[ElectronInjector\ElectronInjector\v8_printer_hook.h](https://github.com/tzdwindows/TzdInjectorNTQQ/blob/main/src/main/native/ElectronInjector/v8_printer_hook.h)* 文件中的 *CallbackJavaLayer_Return* 函数
+- 当传输给Java层的编译器钩子数据大于65536字节，
+  自动截断并且先发送给Java端后自动返回源数据，Java端无权修改大于65536字节的源代码的代码，
+  并且添加了当返回空白字符时自动使用源数据，修改地址在 *[ElectronInjector\ElectronInjector\v8_printer_hook.h](https://github.com/tzdwindows/TzdInjectorNTQQ/blob/main/src/main/native/ElectronInjector/v8_printer_hook.h)* 文件中的 *CallbackJavaLayer_Return* 函数
 
 ### 1.1.1 - 2025-5-25
 **新增**
@@ -44,8 +44,8 @@
 
 **修复**
 - 修正跨线程资源竞争问题
-  - 为每个注入线程创建独立的 JS 代码副本
-  - 使用 RAII 模式管理内存和句柄
+    - 为每个注入线程创建独立的 JS 代码副本
+    - 使用 RAII 模式管理内存和句柄
 - 修复 *injectRendererProcess*  注入导致进程堵塞的问题
 
 **注意事项**
@@ -91,7 +91,7 @@ InjectorHook.setJavascriptMessageHook((tag, msg) -> {
 
 ## 高级配置
 
-### API 列表
+### Java API 列表
 | 方法 | 参数 | 描述            |
 |------|------|---------------|
 | `injectMainProcess()` | `processName, script` | 在主进程中动态注入JS代码 |
@@ -100,6 +100,19 @@ InjectorHook.setJavascriptMessageHook((tag, msg) -> {
 | `setJavascriptCompilationHook()` | `BiFunction<String, String>` | 编译过程拦截        |
 | `initMessageHook()` | `processName` | 初始化消息钩子       |
 | `additionalProgram()` | `launchCommand` | 附加调试进程        |
+
+
+### Javascript API 列表
+| 方法 | 参数 | 描述                        |
+|------|------|---------------------------|
+| `global.windowManager.requestInjection()` | `window,path` | 在指定窗口的渲染线程中注入Javascript脚本 |
+
+### Javascript 事件 列表
+| 事件名称                                      | 事件声明                                                                            | 描述                 |
+|-------------------------------------------|---------------------------------------------------------------------------------|--------------------|
+| `onLogin` | `exports.onLogin = (uid) => {console.log(`用户 ${uid} 登录`)}`                      | 当用户登录时被执行（已弃用不再维护） |
+| `onBrowserWindowCreated` | `exports.onBrowserWindowCreated = (window) => {console.log('[Electron] 窗口创建')}` | 当窗口创建时被执行          |
+
 
 ### 调试参数
 推荐QQ启动参数：
