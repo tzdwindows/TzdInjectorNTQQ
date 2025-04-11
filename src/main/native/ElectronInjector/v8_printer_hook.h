@@ -78,17 +78,17 @@ bool InitializeV8Bindings() {
 
     OriginalMessageErrorLevel = (V8MessageErrorLevelFunc)GetProcAddress(
         dllHandle,
-        "?ErrorLevel@Message@v8@@QEBAHXZ" 
+        "?ErrorLevel@Message@v8@@QEBAHXZ"
     );
 
-    OriginalGetLineNumber = (V8MessageGetLineNumberFunc)GetProcAddress(dllHandle, 
+    OriginalGetLineNumber = (V8MessageGetLineNumberFunc)GetProcAddress(dllHandle,
         "?GetLineNumber@Message@v8@@QEBA?AV?$Maybe@H@2@V?$Local@VContext@v8@@@2@@Z");
     OriginalGetStartColumn = (V8MessageGetStartColumnFunc)GetProcAddress(dllHandle, "?GetStartColumn@Message@v8@@QEBAHXZ");
     OriginalGetEndColumn = (V8MessageGetEndColumnFunc)GetProcAddress(dllHandle, "?GetEndColumn@Message@v8@@QEBAHXZ");
     OriginalGetSourceLine = (V8MessageGetSourceLineFunc)GetProcAddress(dllHandle,
         "?GetSourceLine@Message@v8@@QEBA?AV?$MaybeLocal@VString@v8@@@2@V?$Local@VContext@v8@@@2@@Z");
 
-    if (!V8FunctionTemplateNew || !V8ObjectSet || !V8StringNewFromUtf8 
+    if (!V8FunctionTemplateNew || !V8ObjectSet || !V8StringNewFromUtf8
         || !V8ContextGlobal || !V8GetFunction || !V8ObjectNew) {
         FreeLibrary(dllHandle);
         return false;
@@ -348,8 +348,8 @@ void RegisterMessageListener(v8::Isolate* isolate) {
     v8::Local<v8::Context> context;
     v8_get_current_context_prt(isolate, &context);
     v8::Local<v8::Value> data = v8::Undefined(isolate);
-    OriginalAddMessageListenerWithErrorLevel(isolate, 
-        MessageCallback, 
+    OriginalAddMessageListenerWithErrorLevel(isolate,
+        MessageCallback,
         8,
         data);
 }
@@ -361,7 +361,7 @@ void BindJSPPrinter(v8::Local<v8::Context> context, HANDLE hProcess) {
         return;
     }
     {
-        
+
         v8::Isolate* isolate = v8_context_get_isolate(context);
         v8::Local<v8::Object> global = GetGlobalObject(context);
         //v8::HandleScope handle_scope(isolate);
