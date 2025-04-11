@@ -6,13 +6,21 @@ group = 'com.longYuan'
 version = '1.0-SNAPSHOT'
 
 repositories {
-    mavenCentral()
+    // 使用阿里云镜像（推荐）
+    maven { url 'https://maven.aliyun.com/repository/public/' }
+    maven { url 'https://maven.aliyun.com/repository/central/' }
+    mavenCentral() // 如果阿里云没有，回退到 Maven Central
 }
 
 dependencies {
+    implementation 'org.projectlombok:lombok:1.18.30' // Lombok
+    annotationProcessor 'org.projectlombok:lombok:1.18.30' // 注解处理器
+    implementation 'org.jetbrains:annotations:24.0.1' // JetBrains 注解
+
     testImplementation platform('org.junit:junit-bom:5.10.0')
     testImplementation 'org.junit.jupiter:junit-jupiter'
 }
+
 
 test {
     useJUnitPlatform()

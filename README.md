@@ -57,6 +57,16 @@
 
 通过Java Native Access实现的原生内存操作，相比Electron插件方案具有更好的进程间通信稳定性和更低的内存占用率（实测降低40%内存开销）。
 
+## 更新日志
+
+### 0.2.0 - 2025-4-11
+**功能改进**
+- 扩展消息钩子功能，现支持监听除V8级消息外的其他消息类型
+
+### 0.1.0 - 2025-4-7
+**初始发布**
+- 项目首个稳定版本发布
+
 ## 快速开始
 
 ### 环境要求
@@ -77,8 +87,9 @@ InjectorHook.setJavascriptMessageHook((tag, msg) -> {
     System.out.println("[Message] " + tag + ": " + msg);
 });
 
-// 示例3：启动调试会话
+// 示例3：启动QQ程序并监控全局的上v8下文创建
 Injector.additionalProgram("QQ.exe --remote-debugging-port=9222");
+// 将代码注入到全局的v8上下文中
 Injector.executeJavascript("window.showDevTools()");
 ```
 

@@ -1,7 +1,6 @@
 #pragma once
 
-//#include "v8Tools.h"
-
+#include <codecvt>
 #include <stdexcept>
 #include <string>
 #include <v8.h>
@@ -98,6 +97,10 @@ V8MessageGetStartColumnFunc OriginalGetStartColumn = nullptr;
 V8MessageGetEndColumnFunc OriginalGetEndColumn = nullptr;
 V8MessageGetSourceLineFunc OriginalGetSourceLine = nullptr;
 
+// Hook掉Windows的Api
+static VOID(WINAPI* OriginalOutputDebugStringW)(LPCWSTR lpOutputString) = OutputDebugStringW;
+static VOID(WINAPI* OriginalOutputDebugStringA)(LPCSTR lpOutputString) = OutputDebugStringA;
+
 bool InitializeV8Bindings() {
     HMODULE dllHandle = LoadLibrary(TARGET_V8_MODUIE_NAME);
     if (!dllHandle) {
@@ -141,17 +144,17 @@ bool InitializeV8Bindings() {
 
     OriginalMessageErrorLevel = (V8MessageErrorLevelFunc)GetProcAddress(
         dllHandle,
-        "?ErrorLevel@Message@v8@@QEBAHXZ" 
+        "?ErrorLevel@Message@v8@@QEBAHXZ"
     );
 
-    OriginalGetLineNumber = (V8MessageGetLineNumberFunc)GetProcAddress(dllHandle, 
+    OriginalGetLineNumber = (V8MessageGetLineNumberFunc)GetProcAddress(dllHandle,
         "?GetLineNumber@Message@v8@@QEBA?AV?$Maybe@H@2@V?$Local@VContext@v8@@@2@@Z");
     OriginalGetStartColumn = (V8MessageGetStartColumnFunc)GetProcAddress(dllHandle, "?GetStartColumn@Message@v8@@QEBAHXZ");
     OriginalGetEndColumn = (V8MessageGetEndColumnFunc)GetProcAddress(dllHandle, "?GetEndColumn@Message@v8@@QEBAHXZ");
     OriginalGetSourceLine = (V8MessageGetSourceLineFunc)GetProcAddress(dllHandle,
         "?GetSourceLine@Message@v8@@QEBA?AV?$MaybeLocal@VString@v8@@@2@V?$Local@VContext@v8@@@2@@Z");
 
-    if (!V8FunctionTemplateNew || !V8ObjectSet || !V8StringNewFromUtf8 
+    if (!V8FunctionTemplateNew || !V8ObjectSet || !V8StringNewFromUtf8
         || !V8ContextGlobal || !V8GetFunction || !V8ObjectNew) {
         FreeLibrary(dllHandle);
         return false;
@@ -325,6 +328,55 @@ void MessageCallback(v8::Local<v8::Message> message, v8::Local<v8::Value> data) 
     CallbackJavaLayer(type, output.str());
 }
 
+VOID WINAPI HookedOutputDebugStringW(LPCWSTR lpOutputString) {
+    if (!lpOutputString) return;
+    int inputLength = wcslen(lpOutputString);
+    int bufferSize = WideCharToMultiByte(
+        CP_UTF8,            // 目标编码为 UTF-8
+        0,                  // 标志（保留默认）
+        lpOutputString,     // 输入宽字符串
+        inputLength,        // 输入字符串长度（字符数）
+        NULL,               // 输出缓冲区（首次调用设为 NULL 以计算所需大小）
+        0,                  // 输出缓冲区大小
+        NULL,               // 默认字符替换（不可用时使用）
+        NULL                // 是否使用了默认字符
+    );
+    if (bufferSize == 0) {
+        DWORD error = GetLastError();
+        CallbackJavaLayer("Error", "WideCharToMultiByte failed");
+        return;
+    }
+    char* utf8Buffer = new char[bufferSize + 1];
+    if (!utf8Buffer) {
+        CallbackJavaLayer("Error", "Memory allocation failed");
+        return;
+    }
+    int result = WideCharToMultiByte(
+        CP_UTF8,
+        0,
+        lpOutputString,
+        inputLength,
+        utf8Buffer,         // 输出缓冲区
+        bufferSize,         // 缓冲区大小
+        NULL,
+        NULL
+    );
+    if (result == 0) {
+        DWORD error = GetLastError();
+        delete[] utf8Buffer;
+        CallbackJavaLayer("Error", "WideCharToMultiByte failed");
+        return;
+    }
+    utf8Buffer[bufferSize] = '\0';
+    CallbackJavaLayer("Debug", utf8Buffer);
+    delete[] utf8Buffer;
+    OriginalOutputDebugStringW(lpOutputString);
+}
+
+VOID WINAPI HookedOutputDebugStringA(LPCSTR lpOutputString) {
+    CallbackJavaLayer("Debug", lpOutputString);
+    OriginalOutputDebugStringA(lpOutputString);
+}
 
 void RegisterMessageListener(v8::Isolate* isolate) {
 	if (!OriginalAddMessageListenerWithErrorLevel){
@@ -333,8 +385,8 @@ void RegisterMessageListener(v8::Isolate* isolate) {
     v8::Local<v8::Context> context;
     v8_get_current_context_prt(isolate, &context);
     v8::Local<v8::Value> data = v8::Undefined(isolate);
-    OriginalAddMessageListenerWithErrorLevel(isolate, 
-        MessageCallback, 
+    OriginalAddMessageListenerWithErrorLevel(isolate,
+        MessageCallback,
         8,
         data);
 }
@@ -346,7 +398,7 @@ void BindJSPPrinter(v8::Local<v8::Context> context, HANDLE hProcess) {
         return;
     }
     {
-        
+
         v8::Isolate* isolate = v8_context_get_isolate(context);
         v8::Local<v8::Object> global = GetGlobalObject(context);
         //v8::HandleScope handle_scope(isolate);
@@ -395,4 +447,10 @@ void BindJSPPrinter(v8::Local<v8::Context> context, HANDLE hProcess) {
     }*/
     v8::Isolate* isolate = v8_context_get_isolate(context);
     RegisterMessageListener(isolate);
+
+    DetourTransactionBegin();
+    DetourUpdateThread(GetCurrentThread());
+    DetourAttach(&(PVOID&)OriginalOutputDebugStringW, HookedOutputDebugStringW);
+    DetourAttach(&(PVOID&)OriginalOutputDebugStringA, HookedOutputDebugStringA);
+    DetourTransactionCommit();
 }
