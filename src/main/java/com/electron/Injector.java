@@ -102,7 +102,25 @@ public class Injector {
     //}
 
     /**
-     * 注入js代码
+     * 把js代码注入到主进程中
+     * @param processName 目标进程名称 (需全匹配)
+     * @param jsCode      要注入的JavaScript代码 (需符合ES6规范)
+     * @throws UnsatisfiedLinkError 当本地库加载失败时抛出
+     * @throws SecurityException 当缺少必要权限时抛出
+     * @apiNote 注入操作需要目标进程已启动且处于可调试状态
+     * @deprecated 该方法已过时，请使用{@link #injectMainProcess(String, String)}代替
+     */
+    @GuardedBy("Injector.class")
+    @Deprecated()
+    public static void inject(
+            @NotNull String processName,
+            @NotNull String jsCode
+    ){
+        injectMainProcess(processName, jsCode);
+    }
+
+    /**
+     * 把js代码注入到主进程中
      * @param processName 目标进程名称 (需全匹配)
      * @param jsCode      要注入的JavaScript代码 (需符合ES6规范)
      * @throws UnsatisfiedLinkError 当本地库加载失败时抛出
@@ -113,7 +131,35 @@ public class Injector {
     @PrivilegedOperation(requiredPermissions = {"PROCESS_INJECTION"})
     @Concurrent(level = ThreadSafetyLevel.MULTITHREAD_SAFE)
     @GuardedBy("Injector.class")
-    public static native void inject(
+    public static native void injectMainProcess(
+            @NotNull String processName,
+            @NotNull String jsCode
+    );
+
+    /**
+     * 把js代码注入到渲染进程中
+     * @param processName 目标进程名称 (需全匹配)
+     * @param jsCode      要注入的JavaScript代码 (需符合ES6规范)
+     * @throws UnsatisfiedLinkError 当本地库加载失败时抛出
+     * @throws SecurityException 当缺少必要权限时抛出
+     * @apiNote 注入操作需要目标进程已启动且处于可调试状态
+     */
+    @NativeMethod(platform = "Windows", minArchitecture = 64)
+    @PrivilegedOperation(requiredPermissions = {"PROCESS_INJECTION"})
+    @Concurrent(level = ThreadSafetyLevel.MULTITHREAD_SAFE)
+    @GuardedBy("Injector.class")
+    public static native void injectRendererProcess(
+            @NotNull String processName,
+            @NotNull String jsCode
+    );
+
+    /**
+     * 注入js模块
+     * @param jsCode js代码
+     * @param processName
+     */
+    @Deprecated(since = "1.1", forRemoval = true)
+    public static native void injectModule(
             @NotNull String processName,
             @NotNull String jsCode
     );
