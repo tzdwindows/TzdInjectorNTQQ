@@ -59,6 +59,22 @@
 
 ## 更新日志
 
+### 1.1.1 - 2025-5-25
+**新增**
+- 增加多进程并行注入机制，提升渲染进程注入效率
+- 添加远程线程执行超时检测（5000ms），防止进程阻塞
+
+**修复**
+- 修正跨线程资源竞争问题
+  - 为每个注入线程创建独立的 JS 代码副本
+  - 使用 RAII 模式管理内存和句柄
+- 修复 *injectRendererProcess*  注入导致进程堵塞的问题
+
+**注意事项**
+1. 建议配合 Electron 主进程监控使用
+2. 注入超时记录需在业务层实现日志接口
+3. *setJavascriptCompilationHook* 暂时只支持对主进程的编译钩子，请期待后续更新
+
 ### 1.1.0 - 2025-4-11
 **功能改进**
 - 扩展消息钩子功能，现支持监听除V8级消息外的其他消息类型
@@ -76,11 +92,12 @@
 
 ### 基础用法
 ```java
-// 初始化注入器
-Injector.init();
 
-// 示例1：注入控制台日志
-Injector.inject("QQ.exe", "console.log('Injected!');");
+// 示例1：注入主进程的控制台日志
+Injector.injectMainProcess("QQ.exe", "console.log('Injected!');");
+
+// 示例1：注入渲染进程的控制台日志
+Injector.injectRendererProcess("QQ.exe", "console.log('Injected!');");
 
 // 示例2：注册消息钩子
 InjectorHook.setJavascriptMessageHook((tag, msg) -> {
@@ -88,21 +105,23 @@ InjectorHook.setJavascriptMessageHook((tag, msg) -> {
 });
 
 // 示例3：启动QQ程序并监控全局的上v8下文创建
-Injector.additionalProgram("QQ.exe --remote-debugging-port=9222");
+//Injector.additionalProgram("QQ.exe");
 // 将代码注入到全局的v8上下文中
-Injector.executeJavascript("window.showDevTools()");
+//Injector.executeJavascript("window.showDevTools()");
+// 
 ```
 
 ## 高级配置
 
 ### API 列表
-| 方法 | 参数 | 描述 |
-|------|------|------|
-| `inject()` | `processName, script` | 动态注入JS代码 |
-| `initCompilationHook()` | `processName` | 初始化编译器钩子 |
-| `setJavascriptCompilationHook()` | `BiFunction<String, String>` | 编译过程拦截 |
-| `initMessageHook()` | `processName` | 初始化消息钩子 |
-| `additionalProgram()` | `launchCommand` | 附加调试进程 |
+| 方法 | 参数 | 描述            |
+|------|------|---------------|
+| `injectMainProcess()` | `processName, script` | 在主进程中动态注入JS代码 |
+| `injectRendererProcess()` | `processName, script` | 在渲染进程中动态注入JS代码 |
+| `initCompilationHook()` | `processName` | 初始化编译器钩子      |
+| `setJavascriptCompilationHook()` | `BiFunction<String, String>` | 编译过程拦截        |
+| `initMessageHook()` | `processName` | 初始化消息钩子       |
+| `additionalProgram()` | `launchCommand` | 附加调试进程        |
 
 ### 调试参数
 推荐QQ启动参数：
@@ -111,6 +130,7 @@ Injector.executeJavascript("window.showDevTools()");
 --enable-logging=stderr        # 显示控制台日志
 --disable-session-crashed-bubble  # 禁用崩溃提示
 ```
+（建议使用bat启动调试QQ）
 
 ## 免责声明
 
