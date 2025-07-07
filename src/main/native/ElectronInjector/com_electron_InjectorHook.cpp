@@ -2,6 +2,7 @@
 
 #include "com_electron_InjectorHook.h"
 
+#include <Windows.h>
 #include <TlHelp32.h>
 
 #include "v8_printer_hook.h"
@@ -223,7 +224,7 @@ JNIEXPORT jboolean JNICALL Java_com_electron_InjectorHook_initCompilationHook(
     WaitForSingleObject(hHookThread, INFINITE);
 
     // 新增：卸载DLL防止崩溃
-    LPTHREAD_START_ROUTINE freeLibrary = (LPTHREAD_START_ROUTINE)
+    /*LPTHREAD_START_ROUTINE freeLibrary = (LPTHREAD_START_ROUTINE)
         GetProcAddress(GetModuleHandleW(L"kernel32.dll"), "FreeLibrary");
     if (freeLibrary && dllBase != 0) {
         HANDLE hUnloadThread = CreateRemoteThread(
@@ -239,8 +240,7 @@ JNIEXPORT jboolean JNICALL Java_com_electron_InjectorHook_initCompilationHook(
             WaitForSingleObject(hUnloadThread, 2000);
             CloseHandle(hUnloadThread);
         }
-    }
-
+    }*/
     // 清理资源
     VirtualFreeEx(hTargetProcess, remoteMem, 0, MEM_RELEASE);
     VirtualFreeEx(hTargetProcess, remoteParam, 0, MEM_RELEASE);
@@ -506,94 +506,96 @@ extern "C" __declspec(dllexport) DWORD WINAPI Init_Message_Hook(LPVOID lpParam) 
 
     // 复制进程句柄保证跨进程有效性
     HANDLE hCallerProcessOrig = *reinterpret_cast<HANDLE*>(lpParam);
-    HANDLE hCallerProcess = nullptr;
-    if (!DuplicateHandle(GetCurrentProcess(), hCallerProcessOrig,
-        GetCurrentProcess(), &hCallerProcess,
-        0, FALSE, DUPLICATE_SAME_ACCESS)) {
-        return GetLastError();
-    }
-
-    // 线程枚举优化
-    HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
-    if (hSnapshot == INVALID_HANDLE_VALUE) {
-        return GetLastError();
-    }
-
-    THREADENTRY32 te32 = { sizeof(THREADENTRY32) };
-    std::vector<DWORD> threadIds;
-    const DWORD currentPID = GetCurrentProcessId();
-    const DWORD currentTID = GetCurrentThreadId();
-
-    if (Thread32First(hSnapshot, &te32)) {
-        do {
-            // 包含所有非当前线程的线程
-            if (te32.th32OwnerProcessID == currentPID &&
-                te32.th32ThreadID != currentTID) {
-                threadIds.push_back(te32.th32ThreadID);
-            }
-        } while (Thread32Next(hSnapshot, &te32));
-    }
-    CloseHandle(hSnapshot);
-
-    // APC注入优化
-    constexpr DWORD APC_TIMEOUT = 8000;
-    std::vector<std::pair<HANDLE, HANDLE>> apcHandles; // <hThread, hEvent>
-    for (DWORD tid : threadIds) {
-        HANDLE hThread = OpenThread(THREAD_SET_CONTEXT | THREAD_SUSPEND_RESUME,
-            FALSE, tid);
-        if (!hThread) continue;
-
-        HANDLE hEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
-        if (!hEvent) {
-            CloseHandle(hThread);
-            continue;
+    //std::thread hookThread([hCallerProcessOrig]() {
+        HANDLE hCallerProcess = nullptr;
+        if (!DuplicateHandle(GetCurrentProcess(), hCallerProcessOrig,
+            GetCurrentProcess(), &hCallerProcess,
+            0, FALSE, DUPLICATE_SAME_ACCESS)) {
+            return GetLastError();
         }
 
-        // 挂起线程确保APC执行
-        if (SuspendThread(hThread) != -1) {
-            if (QueueUserAPC(Message_Hook_CheckIsolateAPC, hThread,
-                reinterpret_cast<ULONG_PTR>(hCallerProcess))) {
-                apcHandles.emplace_back(hThread, hEvent);
-            }
-            else {
-                ResumeThread(hThread);
-                CloseHandle(hEvent);
+        // 线程枚举优化
+        HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+        if (hSnapshot == INVALID_HANDLE_VALUE) {
+            return GetLastError();
+        }
+
+        THREADENTRY32 te32 = { sizeof(THREADENTRY32) };
+        std::vector<DWORD> threadIds;
+        const DWORD currentPID = GetCurrentProcessId();
+        const DWORD currentTID = GetCurrentThreadId();
+
+        if (Thread32First(hSnapshot, &te32)) {
+            do {
+                // 包含所有非当前线程的线程
+                if (te32.th32OwnerProcessID == currentPID &&
+                    te32.th32ThreadID != currentTID) {
+                    threadIds.push_back(te32.th32ThreadID);
+                }
+            } while (Thread32Next(hSnapshot, &te32));
+        }
+        CloseHandle(hSnapshot);
+
+        // APC注入优化
+        constexpr DWORD APC_TIMEOUT = 8000;
+        std::vector<std::pair<HANDLE, HANDLE>> apcHandles; // <hThread, hEvent>
+        for (DWORD tid : threadIds) {
+            HANDLE hThread = OpenThread(THREAD_SET_CONTEXT | THREAD_SUSPEND_RESUME,
+                FALSE, tid);
+            if (!hThread) continue;
+
+            HANDLE hEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+            if (!hEvent) {
                 CloseHandle(hThread);
+                continue;
+            }
+
+            // 挂起线程确保APC执行
+            if (SuspendThread(hThread) != -1) {
+                if (QueueUserAPC(Message_Hook_CheckIsolateAPC, hThread,
+                    reinterpret_cast<ULONG_PTR>(hCallerProcess))) {
+                    apcHandles.emplace_back(hThread, hEvent);
+                }
+                else {
+                    ResumeThread(hThread);
+                    CloseHandle(hEvent);
+                    CloseHandle(hThread);
+                }
             }
         }
-    }
 
-    // 批量恢复线程并等待
-    DWORD activeCount = apcHandles.size();
-    for (auto& [hThread, hEvent] : apcHandles) {
-        ResumeThread(hThread);
-    }
-
-    if (activeCount > 0) {
-        HANDLE* events = new HANDLE[activeCount];
-        for (size_t i = 0; i < activeCount; ++i) {
-            events[i] = apcHandles[i].second;
+        // 批量恢复线程并等待
+        DWORD activeCount = apcHandles.size();
+        for (auto& [hThread, hEvent] : apcHandles) {
+            ResumeThread(hThread);
         }
 
-        WaitForMultipleObjects(activeCount, events, TRUE, APC_TIMEOUT);
-        delete[] events;
-    }
+        if (activeCount > 0) {
+            HANDLE* events = new HANDLE[activeCount];
+            for (size_t i = 0; i < activeCount; ++i) {
+                events[i] = apcHandles[i].second;
+            }
 
-    // 资源清理
-    for (auto& [hThread, hEvent] : apcHandles) {
-        CloseHandle(hEvent);
-        CloseHandle(hThread);
-    }
+            WaitForMultipleObjects(activeCount, events, TRUE, APC_TIMEOUT);
+            delete[] events;
+        }
 
-    return activeCount > 0 ? ERROR_SUCCESS : ERROR_OPERATION_ABORTED;
+        // 资源清理
+        for (auto& [hThread, hEvent] : apcHandles) {
+            CloseHandle(hEvent);
+            CloseHandle(hThread);
+        }
+    //});
+   // hookThread.detach();
+    return ERROR_SUCCESS;
 }
 
-
-extern "C" __declspec(dllexport) DWORD WINAPI Init_CompileFunction_Hook(LPVOID lpParam) {
+extern "C" __declspec(dllexport) DWORD WINAPI Init_CompileFunction_detach_Hook(LPVOID lpParam) {
     if (!lpParam || IsBadReadPtr(lpParam, sizeof(HANDLE))) {
         return ERROR_INVALID_PARAMETER;
     }
     HANDLE hCallerProcessOrig = *reinterpret_cast<HANDLE*>(lpParam);
+    
     HANDLE hCallerProcess = nullptr;
     if (!DuplicateHandle(GetCurrentProcess(), hCallerProcessOrig,
         GetCurrentProcess(), &hCallerProcess,
@@ -602,6 +604,26 @@ extern "C" __declspec(dllexport) DWORD WINAPI Init_CompileFunction_Hook(LPVOID l
     }
     g_hCallerProcess = hCallerProcess;
     InitializationCompileHook();
+	
+    return ERROR_SUCCESS;
+}
+
+extern "C" __declspec(dllexport) DWORD WINAPI Init_CompileFunction_Hook(LPVOID lpParam) {
+    if (!lpParam || IsBadReadPtr(lpParam, sizeof(HANDLE))) {
+        return ERROR_INVALID_PARAMETER;
+    }
+    HANDLE hCallerProcessOrig = *reinterpret_cast<HANDLE*>(lpParam);
+    //std::thread hookThread([hCallerProcessOrig]() {
+        HANDLE hCallerProcess = nullptr;
+        if (!DuplicateHandle(GetCurrentProcess(), hCallerProcessOrig,
+            GetCurrentProcess(), &hCallerProcess,
+            0, FALSE, DUPLICATE_SAME_ACCESS)) {
+            return GetLastError();
+        }
+        g_hCallerProcess = hCallerProcess;
+        InitializationCompileHook();
+       // });
+    //hookThread.detach();
     return ERROR_SUCCESS;
 }
 

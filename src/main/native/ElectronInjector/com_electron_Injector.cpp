@@ -4,6 +4,7 @@
 #include "com_electron_InjectorHook.h"
 
 #include <Windows.h>
+#include <processenv.h>
 #include <codecvt>
 #include <iostream>
 #include <jni.h>
@@ -13,17 +14,65 @@
 #include <string>
 #include <vector>
 #include <shellapi.h>
+#include <winternl.h>  
+#include <psapi.h>
+
+#pragma comment(lib, "ntdll.lib")
+
 #include "v8Tools.h"
+#include "APC.h"
 
 #pragma data_seg(".shared")
 DWORD_PTR g_remoteDllBase = 0;
 #pragma data_seg()
 #pragma comment(linker, "/section:.shared,RWS")
 
+typedef NTSTATUS(NTAPI* _NtQueryInformationProcess)(
+    HANDLE ProcessHandle,
+    PROCESSINFOCLASS ProcessInformationClass,
+    PVOID ProcessInformation,
+    ULONG ProcessInformationLength,
+    PULONG ReturnLength
+    );
+
+
+typedef struct _PROCESS_PARAMETERS {
+    ULONG MaximumLength;
+    ULONG Length;
+    ULONG Flags;
+    ULONG DebugFlags;
+    PVOID ConsoleHandle;
+    ULONG ConsoleFlags;
+    PVOID StandardInput;
+    PVOID StandardOutput;
+    PVOID StandardError;
+    UNICODE_STRING CurrentDirectory;
+    HANDLE CurrentDirectoryHandle;
+    UNICODE_STRING DllPath;
+    UNICODE_STRING ImagePathName;
+    UNICODE_STRING CommandLine;  // 这是我们需要的关键字段
+} PROCESS_PARAMETERS, * PPROCESS_PARAMETERS;
+
+BOOL SetDebugPrivilege() {
+    HANDLE hToken;
+    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES, &hToken))
+        return FALSE;
+
+    TOKEN_PRIVILEGES tp;
+    tp.PrivilegeCount = 1;
+    LookupPrivilegeValue(NULL, SE_DEBUG_NAME, &tp.Privileges[0].Luid);
+    tp.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
+
+    BOOL result = AdjustTokenPrivileges(hToken, FALSE, &tp, sizeof(tp), NULL, NULL);
+    CloseHandle(hToken);
+    return result;
+}
+
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID lpReserved) {
     if (reason == DLL_PROCESS_ATTACH) {
         g_hModule = hModule;
-        if (g_remoteDllBase == 0) { // 第一个加载的进程设置基地址
+        SetDebugPrivilege();
+        if (g_remoteDllBase == 0) {
             g_remoteDllBase = (DWORD_PTR)hModule;
         }
     }
@@ -132,7 +181,7 @@ JNIEXPORT void JNICALL Java_com_electron_Injector_additionalProgram(
         nullptr,
         nullptr,
         FALSE,
-        CREATE_SUSPENDED
+        CREATE_SUSPENDED 
         | CREATE_NEW_CONSOLE,
         nullptr,
         nullptr,
@@ -237,7 +286,7 @@ JNIEXPORT void JNICALL Java_com_electron_Injector_additionalProgram(
     //jstring jqq = env->NewStringUTF("QQ.exe");
     //Java_com_electron_InjectorHook_initCompilationHook(env, clazz, jqq);
     // Java_com_electron_InjectorHook_initMessageHook(env, clazz, jqq);
-
+   
     // Resume main thread
     if (ResumeThread(pi.hThread) == (DWORD)-1) {
         CleanupProcess(pi);
@@ -486,26 +535,90 @@ JNIEXPORT void JNICALL Java_com_electron_Injector_injectMainProcess
 
 std::vector<DWORD> GetRendererProcessIds(const wchar_t* targetProcessName) {
     std::vector<DWORD> pids;
-    HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-    if (snapshot == INVALID_HANDLE_VALUE) return pids;
+
+    // 获取 NtQueryInformationProcess 函数指针
+    _NtQueryInformationProcess NtQueryInformationProcess =
+        (_NtQueryInformationProcess)GetProcAddress(GetModuleHandle(L"ntdll.dll"), "NtQueryInformationProcess");
+
+    if (!NtQueryInformationProcess) return pids;
 
     std::wcout << L"Process Name\t\tPID" << std::endl;
     std::wcout << L"-----------\t\t---" << std::endl;
 
+    // 创建进程快照
+    HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snapshot == INVALID_HANDLE_VALUE) return pids;
+
     PROCESSENTRY32W pe = { sizeof(pe) };
     if (Process32FirstW(snapshot, &pe)) {
         do {
+            // 匹配进程名
             if (_wcsicmp(pe.szExeFile, targetProcessName) == 0) {
-                std::wcout << pe.szExeFile << L"\t\t" << pe.th32ProcessID << std::endl;
-                pids.push_back(pe.th32ProcessID);
+                // 打开进程获取详细信息
+                HANDLE hProcess = OpenProcess(
+                    PROCESS_QUERY_INFORMATION | PROCESS_VM_READ,
+                    FALSE,
+                    pe.th32ProcessID
+                );
+
+                if (hProcess) {
+                    // 获取进程基本信息
+                    PROCESS_BASIC_INFORMATION pbi;
+                    NTSTATUS status = NtQueryInformationProcess(
+                        hProcess,
+                        ProcessBasicInformation,
+                        &pbi,
+                        sizeof(pbi),
+                        nullptr
+                    );
+
+                    if (NT_SUCCESS(status)) {
+                        // 读取 PEB 地址
+                        PEB peb;
+                        SIZE_T bytesRead;
+                        if (ReadProcessMemory(
+                            hProcess,
+                            pbi.PebBaseAddress,
+                            &peb,
+                            sizeof(peb),
+                            &bytesRead) && bytesRead == sizeof(peb)) {
+
+                            // 读取进程参数
+                            PROCESS_PARAMETERS pp;
+                            if (ReadProcessMemory(
+                                hProcess,
+                                peb.ProcessParameters,
+                                &pp,
+                                sizeof(pp),
+                                &bytesRead) && bytesRead == sizeof(pp)) {
+
+                                // 读取命令行字符串
+                                wchar_t* cmdLine = new wchar_t[pp.CommandLine.Length / 2 + 1];
+                                if (ReadProcessMemory(
+                                    hProcess,
+                                    pp.CommandLine.Buffer,
+                                    cmdLine,
+                                    pp.CommandLine.Length,
+                                    &bytesRead)) {
+
+                                    cmdLine[bytesRead / 2] = L'\0';
+
+                                    // 检查是否包含 --type=renderer
+                                    if (wcsstr(cmdLine, L"--type=renderer")) {
+                                         pids.push_back(pe.th32ProcessID);
+                                         std::wcout << pe.szExeFile << L"\t\t" << pe.th32ProcessID << std::endl;
+                                    }
+                                }
+                                delete[] cmdLine;
+                            }
+                        }
+                    }
+                    CloseHandle(hProcess);
+                }
             }
         } while (Process32NextW(snapshot, &pe));
     }
     CloseHandle(snapshot);
-
-    if (!pids.empty()) {
-        pids.erase(pids.begin());
-    }
 
     return pids;
 }
@@ -518,129 +631,33 @@ JNIEXPORT void JNICALL Java_com_electron_Injector_injectRendererProcess(
     std::vector<DWORD> pids = GetRendererProcessIds(targetProcess);
     env->ReleaseStringChars(processName, (const jchar*)targetProcess);
 
-    // 将JS代码转换为本地字符串
+    // 将 JS 代码转换为本地字符串
     const char* codeStr = env->GetStringUTFChars(jsCode, nullptr);
     size_t codeSize = strlen(codeStr) + 1;
 
+    // 获取 JavaVM 对象
+    JavaVM* jvm;
+    env->GetJavaVM(&jvm);
+
     // 为每个进程创建独立线程进行注入
     for (DWORD pid : pids) {
-        // 为每个线程复制一份JS代码
-        char* threadCode = new char[codeSize];
-        strcpy_s(threadCode, codeSize, codeStr);
+        // 创建注入数据
+        InjectionData* data = new InjectionData();
+        data->pid = pid;
+        data->jvm = jvm;
+        data->jsSize = codeSize;
 
-        // 创建独立线程处理注入
-        std::thread([pid, threadCode, codeSize]() {
-            // 打开目标进程
-            HANDLE hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, pid);
-            if (!hProcess) {
-                delete[] threadCode;
-                return;
-            }
+        // 复制 JS 代码
+        data->jsCode = new char[codeSize];
+        strcpy_s(const_cast<char*>(data->jsCode), codeSize, codeStr);
 
-            // 获取当前DLL路径
-            wchar_t dllPath[MAX_PATH];
-            if (!GetModuleFileNameW(g_hModule, dllPath, MAX_PATH)) {
-                CloseHandle(hProcess);
-                delete[] threadCode;
-                return;
-            }
-
-            // 在目标进程分配内存并写入DLL路径
-            size_t pathSize = (wcslen(dllPath) + 1) * sizeof(wchar_t);
-            LPVOID remoteDllPath = VirtualAllocEx(hProcess, NULL, pathSize,
-                MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-            if (!remoteDllPath) {
-                CloseHandle(hProcess);
-                delete[] threadCode;
-                return;
-            }
-
-            if (!WriteProcessMemory(hProcess, remoteDllPath, dllPath, pathSize, NULL)) {
-                VirtualFreeEx(hProcess, remoteDllPath, 0, MEM_RELEASE);
-                CloseHandle(hProcess);
-                delete[] threadCode;
-                return;
-            }
-
-            // 加载DLL到目标进程
-            LPTHREAD_START_ROUTINE loadLibraryAddr = (LPTHREAD_START_ROUTINE)
-                GetProcAddress(GetModuleHandle(L"kernel32.dll"), "LoadLibraryW");
-            HANDLE hThread = CreateRemoteThread(hProcess, NULL, 0,
-                loadLibraryAddr, remoteDllPath, 0, NULL);
-            if (!hThread) {
-                VirtualFreeEx(hProcess, remoteDllPath, 0, MEM_RELEASE);
-                CloseHandle(hProcess);
-                delete[] threadCode;
-                return;
-            }
-
-            // 获取DLL基地址
-            WaitForSingleObject(hThread, INFINITE);
-            DWORD_PTR dllBaseAddr = 0;
-            GetExitCodeThread(hThread, (LPDWORD)&dllBaseAddr);
-            CloseHandle(hThread);
-            VirtualFreeEx(hProcess, remoteDllPath, 0, MEM_RELEASE);
-
-            if (dllBaseAddr == 0) {
-                CloseHandle(hProcess);
-                delete[] threadCode;
-                return;
-            }
-
-            // 写入JavaScript代码到目标进程
-            LPVOID remoteCode = VirtualAllocEx(hProcess, NULL, codeSize,
-                MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-            if (!remoteCode) {
-                CloseHandle(hProcess);
-                delete[] threadCode;
-                return;
-            }
-
-            if (!WriteProcessMemory(hProcess, remoteCode, threadCode, codeSize, NULL)) {
-                VirtualFreeEx(hProcess, remoteCode, 0, MEM_RELEASE);
-                CloseHandle(hProcess);
-                delete[] threadCode;
-                return;
-            }
-
-            // 获取导出函数地址
-            FARPROC remoteFuncAddr = GetProcAddress(g_hModule, "ExportFunction");
-            if (!remoteFuncAddr) {
-                VirtualFreeEx(hProcess, remoteCode, 0, MEM_RELEASE);
-                CloseHandle(hProcess);
-                delete[] threadCode;
-                return;
-            }
-
-            // 创建远程线程执行代码（不等待完成）
-            HANDLE hFuncThread = CreateRemoteThread(hProcess, nullptr, 0,
-                reinterpret_cast<LPTHREAD_START_ROUTINE>(remoteFuncAddr),
-                remoteCode, 0, nullptr);
-
-            // 非阻塞方式处理结果
-            if (hFuncThread) {
-                // 设置超时时间（例如5秒）
-                DWORD waitResult = WaitForSingleObject(hFuncThread, 5000);
-
-                if (waitResult == WAIT_TIMEOUT) {
-                    // 可以选择记录超时日志但不阻塞
-                }
-
-                CloseHandle(hFuncThread);
-            }
-
-            // 清理资源
-            VirtualFreeEx(hProcess, remoteCode, 0, MEM_RELEASE);
-            CloseHandle(hProcess);
-            delete[] threadCode;
-
-            }).detach();  // 分离线程，使其独立运行
+        // 创建注入线程
+        std::thread(InjectionThreadProc, data).detach();
     }
 
-    // 释放JNI资源
+    // 释放 JNI 资源
     env->ReleaseStringUTFChars(jsCode, codeStr);
 }
-
 
 /*
      * Class:     com_electron_injectModule
@@ -958,7 +975,6 @@ void ExecuteInV8Context(ThreadInfo* info) {
     // 获取Isolate并执行JS
     if (v8::Isolate* isolate = GetSafeIsolate()) {
         info->has_isolate = true;
-
         // 显示线程信息
         //std::wstring_convert<std::codecvt_utf8<wchar_t>> converter;
         //std::string msg = "Thread ID: " + std::to_string(info->thread_id)
@@ -986,6 +1002,7 @@ void NTAPI CheckIsolateAPC(ULONG_PTR param) {
     __try {
         InstallV8DisposeHook();
         ExecuteInV8Context(info);
+        
     }
     __except (EXCEPTION_EXECUTE_HANDLER) {
         DWORD exceptionCode = GetExceptionCode();
@@ -1007,7 +1024,6 @@ extern "C" __declspec(dllexport) DWORD WINAPI ExportFunction(LPVOID lpParam) {
         MessageBoxA(NULL, "无效的JS代码输入", "错误", MB_ICONERROR);
         return ERROR_INVALID_PARAMETER;
     }
-
     // 复制JS代码（线程安全）
     size_t jsLen = strlen(jsCode) + 1;
     char* jsCopy = new char[jsLen];
@@ -1038,6 +1054,9 @@ extern "C" __declspec(dllexport) DWORD WINAPI ExportFunction(LPVOID lpParam) {
     std::vector<HANDLE> apcEvents;
     DWORD activeAPCCount = 0;
 
+    std::string msg = "枚举到的线程数量: " + std::to_string(threadIds.size());
+   // MessageBoxA(NULL, msg.c_str(), "线程数量", MB_OK);
+
     // 提交APC请求
     for (DWORD tid : threadIds) {
         HANDLE hThread = OpenThread(THREAD_SET_CONTEXT | THREAD_QUERY_INFORMATION, FALSE, tid);
@@ -1049,7 +1068,7 @@ extern "C" __declspec(dllexport) DWORD WINAPI ExportFunction(LPVOID lpParam) {
             info->js_code = new char[jsLen];
             info->completion_event = hAPCEvent;
             strcpy_s(info->js_code, jsLen, jsCopy);
-            //MessageBoxW(NULL, GetThreadName(tid), L"   ", MB_ICONERROR | MB_OK);
+            
             if (QueueUserAPC(CheckIsolateAPC, hThread, (ULONG_PTR)info)) {
                 apcEvents.push_back(hAPCEvent);
                 activeAPCCount++;
@@ -1062,6 +1081,11 @@ extern "C" __declspec(dllexport) DWORD WINAPI ExportFunction(LPVOID lpParam) {
             CloseHandle(hThread);
         }
     }
+
+    char apcCountMsg[64];
+    sprintf_s(apcCountMsg, "成功提交APC的线程数量: %lu", activeAPCCount);
+    //MessageBoxA(NULL, apcCountMsg, "APC提交结果", MB_OK | MB_ICONINFORMATION);
+
 
     if (activeAPCCount > 0) {
         DWORD waitResult = WaitForMultipleObjects(

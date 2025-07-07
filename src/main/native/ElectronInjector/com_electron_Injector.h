@@ -9,10 +9,26 @@ extern "C" {
 #endif
 	/*
 	 * Class:     com_electron_Injector
-	 * Method:    inject
+	 * Method:    injectMainProcess
 	 * Signature: (Ljava/lang/String;Ljava/lang/String;)V
 	 */
-	JNIEXPORT void JNICALL Java_com_electron_Injector_inject
+	JNIEXPORT void JNICALL Java_com_electron_Injector_injectMainProcess
+	(JNIEnv*, jclass, jstring, jstring);
+
+	/*
+	 * Class:     com_electron_Injector
+	 * Method:    injectRendererProcess
+	 * Signature: (Ljava/lang/String;Ljava/lang/String;)V
+	 */
+	JNIEXPORT void JNICALL Java_com_electron_Injector_injectRendererProcess
+	(JNIEnv*, jclass, jstring, jstring);
+
+	/*
+	 * Class:     com_electron_injectModule
+	 * Method:    injectModule
+	 * Signature: (Ljava/lang/String;Ljava/lang/String;)V
+	 */
+	JNIEXPORT void JNICALL Java_com_electron_Injector_injectModule
 	(JNIEnv*, jclass, jstring, jstring);
 
 	/*

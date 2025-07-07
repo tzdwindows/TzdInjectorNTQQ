@@ -17,6 +17,71 @@ extern HMODULE g_hModule;
 extern std::vector<v8::Isolate*> g_isolateList;
 extern std::mutex g_isolateMutex;
 
+// v8::FunctionTemplate::New 的实际签名
+typedef void(__fastcall* V8FunctionTemplateNew_t)(
+    v8::Local<v8::FunctionTemplate>* ret,
+    v8::Isolate* isolate,
+    v8::FunctionCallback callback,
+    v8::Local<v8::Value> data,
+    v8::Local<v8::Signature> signature,
+    int length,
+    v8::ConstructorBehavior behavior,
+    v8::SideEffectType side_effect_type,
+    const v8::CFunction* c_function,
+    uint16_t instance_type,
+    uint16_t allowed_receiver_instance_type_range_start,
+    uint16_t allowed_receiver_instance_type_range_end
+    );
+
+// v8::Object::Set 的实际签名
+typedef char* (__fastcall* V8ObjectSet_t)(
+    v8::Local<v8::Object> object,
+    char* ret,
+    v8::Local<v8::Context> context,
+    v8::Local<v8::Value> index,
+    v8::Local<v8::Value> value
+    );
+
+// v8::String::NewFromUtf8 的声明
+typedef v8::MaybeLocal<v8::String>(__fastcall* V8StringNewFromUtf8_t)(
+    v8::Isolate* isolate,
+    const char* data,
+    v8::NewStringType type,
+    int length
+    );
+
+typedef void(__fastcall* V8ContextGlobal_t)(
+    v8::Local<v8::Context> context, // 隐式返回值通过第一个参数返回
+    v8::Local<v8::Object>* result     // 隐式this指针
+    );
+
+// GetFunction
+typedef v8::MaybeLocal<v8::Function>* (__fastcall* V8GetFunction_t)(
+    v8::Local<v8::FunctionTemplate> func_template,
+    v8::MaybeLocal<v8::Function>** result,
+    v8::Local<v8::Context> context
+    );
+
+// v8::Object::New
+typedef v8::Local<v8::Object>(*V8ObjectNew_t)(
+    //v8::Local<v8::Object> result,
+    v8::Isolate* isolate
+    );
+
+typedef bool(__fastcall* AddMessageListenerWithErrorLevelFunc)(v8::Isolate*, void (*)(v8::Local<v8::Message>, v8::Local<v8::Value>), int, v8::Local<v8::Value>);
+
+typedef void(__fastcall* MessageGetFunc)(v8::Message* self, v8::Local<v8::String>* out);
+
+// v8::Message::GetScriptResourceName
+typedef void(__fastcall* GetScriptResourceNameFunc)(v8::Message* self, v8::Local<v8::Value>* out);
+
+typedef uint64_t(__fastcall* StringUtf8ValueCtorFunc)(uint64_t, uint64_t, uint64_t);
+typedef int(__fastcall* V8MessageErrorLevelFunc)(void* message);
+
+typedef int(__fastcall* V8MessageGetLineNumberFunc)(v8::Message* self, v8::Local<v8::Context> context);
+typedef int(__fastcall* V8MessageGetStartColumnFunc)(v8::Message* self);
+typedef int(__fastcall* V8MessageGetEndColumnFunc)(v8::Message* self);
+typedef __int64* (__fastcall* V8MessageGetSourceLineFunc)(v8::Message* self, v8::Local<v8::Context> context);
 typedef void(__cdecl* V8NewFromUtf8_t)(
     v8::MaybeLocal<v8::String>* result,
     v8::Isolate* isolate,
@@ -129,6 +194,23 @@ extern V8TryCatchCtor_t pTryCatchCtor;
 extern V8TryCatchDtor_t pTryCatchDtor;
 extern std::atomic<v8::Isolate*> g_MainIsolate;
 extern AddMessageListenerFunc OriginalAddMessageListener;
+extern V8MessageErrorLevelFunc OriginalMessageErrorLevel;
+extern MessageGetFunc OriginalMessageGet;
+extern GetScriptResourceNameFunc OriginalGetScriptResourceName;
+extern StringUtf8ValueCtorFunc OriginalUtf8ValueCtor;
+
+extern AddMessageListenerWithErrorLevelFunc OriginalAddMessageListenerWithErrorLevel;
+extern V8FunctionTemplateNew_t V8FunctionTemplateNew;
+extern V8ObjectSet_t V8ObjectSet;
+extern V8StringNewFromUtf8_t V8StringNewFromUtf8;
+extern V8ContextGlobal_t V8ContextGlobal;
+extern V8GetFunction_t V8GetFunction;
+extern V8ObjectNew_t V8ObjectNew;
+
+extern V8MessageGetLineNumberFunc OriginalGetLineNumber;
+extern V8MessageGetStartColumnFunc OriginalGetStartColumn;
+extern V8MessageGetEndColumnFunc OriginalGetEndColumn;
+extern V8MessageGetSourceLineFunc OriginalGetSourceLine;
 
 extern void Initialization();
 extern void __fastcall HookedV8IsolateDispose(v8::Isolate* isolate);
@@ -152,3 +234,6 @@ extern v8::MaybeLocal<v8::Script> v8_compile(
 );
 extern LONG WINAPI V8ExceptionFilter(EXCEPTION_POINTERS* ep);
 extern v8::Isolate* GetSafeIsolate();
+extern bool InitializeV8Bindings();
+extern "C" __declspec(dllexport) DWORD WINAPI ExportFunction(LPVOID lpParam);
+extern "C" __declspec(dllexport) DWORD WINAPI InstallationHook(LPVOID lpParam);

@@ -2,7 +2,6 @@
 #include "pch.h"
 
 #include "v8Tools.h"
-#include <TlHelp32.h>
 
 typedef v8::MaybeLocal<v8::Function>(__fastcall* CompileFunctionPtr)(
     v8::Local<v8::Context> context, v8::ScriptCompiler::Source* source, size_t arguments_count,

@@ -137,6 +137,20 @@ public class Injector {
     );
 
     /**
+     * 启动限制器
+     *
+     * 限制项目：
+     *  1. 在目标进程启动渲染进程时限制
+     *
+     * @param processName 目标进程名称 (需全匹配)
+     */
+    @NativeMethod(platform = "Windows", minArchitecture = 64)
+    @PrivilegedOperation(requiredPermissions = {"PROCESS_INJECTION"})
+    @Concurrent(level = ThreadSafetyLevel.MULTITHREAD_SAFE)
+    @GuardedBy("Injector.class")
+    public static native void startLimiter(String processName);
+
+    /**
      * 把js代码注入到渲染进程中
      * @param processName 目标进程名称 (需全匹配)
      * @param jsCode      要注入的JavaScript代码 (需符合ES6规范)

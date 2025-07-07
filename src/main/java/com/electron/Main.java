@@ -13,7 +13,7 @@ public class Main {
     /**
      * 主进程JavaScript文件路径
      */
-    private static final String MAIN_JS = "\\\\main.js";
+    private static final String MAIN_JS = "C:\\\\Users\\\\Administrator\\\\MCreatorWorkspaces\\\\ElectronInjector\\\\src\\\\main\\\\JavaScript\\\\main.js";
 
     /**
      * 主入口 - JavaScript执行环境控制演示
@@ -27,13 +27,22 @@ public class Main {
      * @param args 命令行参数（未使用）
      */
     public static void main(String[] args) throws InterruptedException {
-        InjectorHook.setJavascriptMessageHook((tag, message) -> {
+        System.load("C:\\Users\\Administrator\\source\\repos\\ElectronInjector\\x64\\Release\\ElectronInjector.dll");
+
+        InjectorHook.setJavascriptCompilationHook((tag, message) -> {
             System.out.print(message);
+            return "";
         });
+        InjectorHook.initCompilationHook("QQ.exe");
+
         Injector.injectMainProcess(
                 "QQ.exe",
                 "process.mainModule.require('"
-                + MAIN_JS + "');"
+                        + MAIN_JS + "');"
         );
+
+        while (true){
+            Thread.sleep(1000);
+        }
     }
 }

@@ -1,0 +1,10 @@
+C:\Users\Administrator\source\repos\ElectronInjector\ElectronInjector\APC.cpp;C:\Users\Administrator\source\repos\ElectronInjector\ElectronInjector\x64\Release\APC.obj
+C:\Users\Administrator\source\repos\ElectronInjector\ElectronInjector\com_electron_DebugElectron.cpp;C:\Users\Administrator\source\repos\ElectronInjector\ElectronInjector\x64\Release\com_electron_DebugElectron.obj
+C:\Users\Administrator\source\repos\ElectronInjector\ElectronInjector\com_electron_Injector.cpp;C:\Users\Administrator\source\repos\ElectronInjector\ElectronInjector\x64\Release\com_electron_Injector.obj
+C:\Users\Administrator\source\repos\ElectronInjector\ElectronInjector\com_electron_InjectorHook.cpp;C:\Users\Administrator\source\repos\ElectronInjector\ElectronInjector\x64\Release\com_electron_InjectorHook.obj
+C:\Users\Administrator\source\repos\ElectronInjector\ElectronInjector\com_electron_ProcessInjection.cpp;C:\Users\Administrator\source\repos\ElectronInjector\ElectronInjector\x64\Release\com_electron_ProcessInjection.obj
+C:\Users\Administrator\source\repos\ElectronInjector\ElectronInjector\dllmain.cpp;C:\Users\Administrator\source\repos\ElectronInjector\ElectronInjector\x64\Release\dllmain.obj
+C:\Users\Administrator\source\repos\ElectronInjector\ElectronInjector\pch.cpp;C:\Users\Administrator\source\repos\ElectronInjector\ElectronInjector\x64\Release\pch.obj
+C:\Users\Administrator\source\repos\ElectronInjector\ElectronInjector\v8Tools.cpp;C:\Users\Administrator\source\repos\ElectronInjector\ElectronInjector\x64\Release\v8Tools.obj
+C:\Users\Administrator\source\repos\ElectronInjector\ElectronInjector\v8_hook.cpp;C:\Users\Administrator\source\repos\ElectronInjector\ElectronInjector\x64\Release\v8_hook.obj
+C:\Users\Administrator\source\repos\ElectronInjector\ElectronInjector\v8_hook.h;C:\Users\Administrator\source\repos\ElectronInjector\ElectronInjector\x64\Release\v8_hook.obj

@@ -33,6 +33,15 @@
     <ClInclude Include="v8_printer_hook.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="com_electron_DebugElectron.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="APC.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="com_electron_ProcessInjection.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">
@@ -54,6 +63,15 @@
       <Filter>头文件</Filter>
     </ClCompile>
     <ClCompile Include="v8_hook.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="com_electron_DebugElectron.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="APC.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="com_electron_ProcessInjection.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>

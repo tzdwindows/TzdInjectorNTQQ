@@ -13,72 +13,6 @@
 FARPROC g_pCallbackJava = nullptr;
 HANDLE g_hCallerProcess = nullptr;
 
-// v8::FunctionTemplate::New 的实际签名
-typedef void(__fastcall* V8FunctionTemplateNew_t)(
-    v8::Local<v8::FunctionTemplate>* ret,
-    v8::Isolate* isolate,
-    v8::FunctionCallback callback,
-    v8::Local<v8::Value> data,
-    v8::Local<v8::Signature> signature,
-    int length,
-    v8::ConstructorBehavior behavior,
-    v8::SideEffectType side_effect_type,
-    const v8::CFunction* c_function,
-    uint16_t instance_type,
-    uint16_t allowed_receiver_instance_type_range_start,
-    uint16_t allowed_receiver_instance_type_range_end
-    );
-
-// v8::Object::Set 的实际签名
-typedef char* (__fastcall* V8ObjectSet_t)(
-    v8::Local<v8::Object> object,
-    char* ret,
-    v8::Local<v8::Context> context,
-    v8::Local<v8::Value> index,
-    v8::Local<v8::Value> value
-    );
-
-// v8::String::NewFromUtf8 的声明
-typedef v8::MaybeLocal<v8::String>(__fastcall* V8StringNewFromUtf8_t)(
-    v8::Isolate* isolate,
-    const char* data,
-    v8::NewStringType type,
-    int length
-    );
-
-typedef void(__fastcall* V8ContextGlobal_t)(
-    v8::Local<v8::Context> context, // 隐式返回值通过第一个参数返回
-    v8::Local<v8::Object>* result     // 隐式this指针
-    );
-
-// GetFunction
-typedef v8::MaybeLocal<v8::Function>* (__fastcall* V8GetFunction_t)(
-    v8::Local<v8::FunctionTemplate> func_template,
-    v8::MaybeLocal<v8::Function>** result,
-    v8::Local<v8::Context> context
-    );
-
-// v8::Object::New
-typedef v8::Local<v8::Object>(*V8ObjectNew_t)(
-    //v8::Local<v8::Object> result,
-    v8::Isolate* isolate
-    );
-
-typedef bool(__fastcall* AddMessageListenerWithErrorLevelFunc)(v8::Isolate*, void (*)(v8::Local<v8::Message>, v8::Local<v8::Value>), int, v8::Local<v8::Value>);
-
-typedef void(__fastcall* MessageGetFunc)(v8::Message* self, v8::Local<v8::String>* out);
-
-// v8::Message::GetScriptResourceName
-typedef void(__fastcall* GetScriptResourceNameFunc)(v8::Message* self, v8::Local<v8::Value>* out);
-
-typedef uint64_t(__fastcall* StringUtf8ValueCtorFunc)(uint64_t, uint64_t, uint64_t);
-typedef int(__fastcall* V8MessageErrorLevelFunc)(void* message);
-
-typedef int(__fastcall* V8MessageGetLineNumberFunc)(v8::Message* self, v8::Local<v8::Context> context);
-typedef int(__fastcall* V8MessageGetStartColumnFunc)(v8::Message* self);
-typedef int(__fastcall* V8MessageGetEndColumnFunc)(v8::Message* self);
-typedef __int64*(__fastcall* V8MessageGetSourceLineFunc)(v8::Message* self, v8::Local<v8::Context> context);
-
 V8MessageErrorLevelFunc OriginalMessageErrorLevel = nullptr;
 MessageGetFunc OriginalMessageGet = nullptr;
 GetScriptResourceNameFunc OriginalGetScriptResourceName = nullptr;
@@ -144,17 +78,17 @@ bool InitializeV8Bindings() {
 
     OriginalMessageErrorLevel = (V8MessageErrorLevelFunc)GetProcAddress(
         dllHandle,
-        "?ErrorLevel@Message@v8@@QEBAHXZ"
+        "?ErrorLevel@Message@v8@@QEBAHXZ" 
     );
 
-    OriginalGetLineNumber = (V8MessageGetLineNumberFunc)GetProcAddress(dllHandle,
+    OriginalGetLineNumber = (V8MessageGetLineNumberFunc)GetProcAddress(dllHandle, 
         "?GetLineNumber@Message@v8@@QEBA?AV?$Maybe@H@2@V?$Local@VContext@v8@@@2@@Z");
     OriginalGetStartColumn = (V8MessageGetStartColumnFunc)GetProcAddress(dllHandle, "?GetStartColumn@Message@v8@@QEBAHXZ");
     OriginalGetEndColumn = (V8MessageGetEndColumnFunc)GetProcAddress(dllHandle, "?GetEndColumn@Message@v8@@QEBAHXZ");
     OriginalGetSourceLine = (V8MessageGetSourceLineFunc)GetProcAddress(dllHandle,
         "?GetSourceLine@Message@v8@@QEBA?AV?$MaybeLocal@VString@v8@@@2@V?$Local@VContext@v8@@@2@@Z");
 
-    if (!V8FunctionTemplateNew || !V8ObjectSet || !V8StringNewFromUtf8
+    if (!V8FunctionTemplateNew || !V8ObjectSet || !V8StringNewFromUtf8 
         || !V8ContextGlobal || !V8GetFunction || !V8ObjectNew) {
         FreeLibrary(dllHandle);
         return false;
@@ -194,6 +128,9 @@ void CallbackJavaLayer(const std::string& tag, const std::string& message)
 std::string CallbackJavaLayer_Return(const std::string& tag, const std::string& message) {
     if (!g_hCallerProcess || tag.empty() || message.empty()) return message;
 
+    // 保存原始message，无论发生什么都将返回这个
+    const std::string originalMessage = message;
+
 #pragma pack(push, 1)
     struct CallbackData {
         char tag[64];
@@ -207,20 +144,36 @@ std::string CallbackJavaLayer_Return(const std::string& tag, const std::string& 
 
     // 1. 准备输入数据
     CallbackData data;
-    strcpy_s(data.tag, sizeof(data.tag), tag.c_str()); // 明确指定缓冲区大小
-    strcpy_s(data.message, sizeof(data.message), message.c_str());
+
+    // 处理tag（确保不超过63字符）
+    if (tag.length() >= sizeof(data.tag)) {
+        strncpy_s(data.tag, sizeof(data.tag), tag.c_str(), sizeof(data.tag) - 1);
+        data.tag[sizeof(data.tag) - 1] = '\0'; // 确保终止
+    }
+    else {
+        strcpy_s(data.tag, sizeof(data.tag), tag.c_str());
+    }
+
+    // 处理message（如果超过65535则截断）
+    if (message.length() >= sizeof(data.message)) {
+        strncpy_s(data.message, sizeof(data.message), message.c_str(), sizeof(data.message) - 1);
+        data.message[sizeof(data.message) - 1] = '\0'; // 确保终止
+    }
+    else {
+        strcpy_s(data.message, sizeof(data.message), message.c_str());
+    }
 
     // 2. 分配远程内存
     LPVOID remoteInputData = VirtualAllocEx(g_hCallerProcess, nullptr, sizeof(CallbackData), MEM_COMMIT, PAGE_READWRITE);
     if (!remoteInputData || !WriteProcessMemory(g_hCallerProcess, remoteInputData, &data, sizeof(CallbackData), nullptr)) {
         if (remoteInputData) VirtualFreeEx(g_hCallerProcess, remoteInputData, 0, MEM_RELEASE);
-        return message;
+        return originalMessage; // 返回原始message
     }
 
     LPVOID remoteOutputData = VirtualAllocEx(g_hCallerProcess, nullptr, 1024, MEM_COMMIT, PAGE_READWRITE);
     if (!remoteOutputData) {
         VirtualFreeEx(g_hCallerProcess, remoteInputData, 0, MEM_RELEASE);
-        return message;
+        return originalMessage; // 返回原始message
     }
 
     // 3. 构建参数结构体
@@ -230,7 +183,7 @@ std::string CallbackJavaLayer_Return(const std::string& tag, const std::string& 
         VirtualFreeEx(g_hCallerProcess, remoteInputData, 0, MEM_RELEASE);
         VirtualFreeEx(g_hCallerProcess, remoteOutputData, 0, MEM_RELEASE);
         if (remoteParams) VirtualFreeEx(g_hCallerProcess, remoteParams, 0, MEM_RELEASE);
-        return message;
+        return originalMessage; // 返回原始message
     }
 
     // 4. 获取远程函数地址
@@ -239,7 +192,7 @@ std::string CallbackJavaLayer_Return(const std::string& tag, const std::string& 
         VirtualFreeEx(g_hCallerProcess, remoteInputData, 0, MEM_RELEASE);
         VirtualFreeEx(g_hCallerProcess, remoteOutputData, 0, MEM_RELEASE);
         VirtualFreeEx(g_hCallerProcess, remoteParams, 0, MEM_RELEASE);
-        return message;
+        return originalMessage; // 返回原始message
     }
 
     // 5. 创建远程线程
@@ -248,7 +201,7 @@ std::string CallbackJavaLayer_Return(const std::string& tag, const std::string& 
         VirtualFreeEx(g_hCallerProcess, remoteInputData, 0, MEM_RELEASE);
         VirtualFreeEx(g_hCallerProcess, remoteOutputData, 0, MEM_RELEASE);
         VirtualFreeEx(g_hCallerProcess, remoteParams, 0, MEM_RELEASE);
-        return message;
+        return originalMessage; // 返回原始message
     }
 
     // 6. 等待线程完成
@@ -263,6 +216,16 @@ std::string CallbackJavaLayer_Return(const std::string& tag, const std::string& 
     VirtualFreeEx(g_hCallerProcess, remoteOutputData, 0, MEM_RELEASE);
     VirtualFreeEx(g_hCallerProcess, remoteParams, 0, MEM_RELEASE);
     CloseHandle(hThread);
+
+    // 最终返回逻辑：
+    // 1. 如果原始message被截断过（长度≥65536），始终返回原始message
+    // 2. 如果远程返回为空或"null"，返回原始message
+    // 3. 否则返回远程调用结果
+    if (originalMessage.length() >= sizeof(data.message) ||
+        resultBuffer[0] == '\0' ||
+        strcmp(resultBuffer, "[NULL]") == 0) {
+        return originalMessage;
+    }
 
     return std::string(resultBuffer);
 }
@@ -385,8 +348,8 @@ void RegisterMessageListener(v8::Isolate* isolate) {
     v8::Local<v8::Context> context;
     v8_get_current_context_prt(isolate, &context);
     v8::Local<v8::Value> data = v8::Undefined(isolate);
-    OriginalAddMessageListenerWithErrorLevel(isolate,
-        MessageCallback,
+    OriginalAddMessageListenerWithErrorLevel(isolate, 
+        MessageCallback, 
         8,
         data);
 }
@@ -398,7 +361,7 @@ void BindJSPPrinter(v8::Local<v8::Context> context, HANDLE hProcess) {
         return;
     }
     {
-
+        
         v8::Isolate* isolate = v8_context_get_isolate(context);
         v8::Local<v8::Object> global = GetGlobalObject(context);
         //v8::HandleScope handle_scope(isolate);

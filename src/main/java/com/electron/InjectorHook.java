@@ -36,6 +36,11 @@ public class InjectorHook {
     private static final List<JavascriptCompilationHook> JAVASCRIPT_COMPILATION_HOOKS = new CopyOnWriteArrayList<>();
 
     /**
+     * 空消息处理返回值
+     */
+    private static final String SOURCES_RETURN = "[NULL]";
+
+    /**
      * 设置Javascript消息钩子
      * @param hook 消息钩子实例（不可为null）
      * @throws NullPointerException 当参数为null时抛出
@@ -148,6 +153,12 @@ public class InjectorHook {
         for (JavascriptCompilationHook hook : JAVASCRIPT_COMPILATION_HOOKS) {
             try {
                 processed = hook.receiveCompilationHook(tag, processed);
+                if (processed == null
+                        || processed.isEmpty()
+                        || processed.equals(message)) {
+
+                    processed = SOURCES_RETURN;
+                }
             } catch (Exception e) {
                 //log.error("编译器钩子执行异常: {}", hook.getClass().getName(), e);
                 System.err.println("编译器钩子执行异常: " + hook.getClass().getName());
