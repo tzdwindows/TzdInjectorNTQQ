@@ -13,7 +13,10 @@ public class Main {
     /**
      * 主进程JavaScript文件路径
      */
+<<<<<<< Updated upstream
     private static final String MAIN_JS = "C:\\\\Users\\\\Administrator\\\\MCreatorWorkspaces\\\\ElectronInjector\\\\src\\\\main\\\\JavaScript\\\\main.js";
+=======
+>>>>>>> Stashed changes
 
     /**
      * 主入口 - JavaScript执行环境控制演示
@@ -27,6 +30,7 @@ public class Main {
      * @param args 命令行参数（未使用）
      */
     public static void main(String[] args) throws InterruptedException {
+<<<<<<< Updated upstream
         System.load("C:\\Users\\Administrator\\source\\repos\\ElectronInjector\\x64\\Release\\ElectronInjector.dll");
 
         InjectorHook.setJavascriptCompilationHook((tag, message) -> {
@@ -35,15 +39,20 @@ public class Main {
         });
         InjectorHook.initCompilationHook("QQ.exe");
 
+=======
         InjectorHook.setJavascriptMessageHook((tag, message) -> System.out.print(message));
+>>>>>>> Stashed changes
         Injector.injectMainProcess(
                 "QQ.exe",
                 "process.mainModule.require('"
                         + MAIN_JS + "');"
         );
+<<<<<<< Updated upstream
 
         while (true){
+=======
         while (true) {
+>>>>>>> Stashed changes
             Thread.sleep(1000);
         }
     }
