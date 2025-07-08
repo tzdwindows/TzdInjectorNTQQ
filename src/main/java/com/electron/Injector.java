@@ -9,6 +9,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.annotation.*;
+import java.nio.file.Path;
 
 /**
  * Electron的Javascript注入器
@@ -74,32 +75,33 @@ public class Injector {
     public enum OperationType { JS_EXECUTION, HOOK_INITIALIZATION, PROCESS_ATTACH }
     // endregion
 
-    //static {
-    //    @SuppressWarnings("all")
-    //    @DllConfiguration("ElectronInjector.dll")
-    //    final String dllPath = "/ElectronInjector.dll";
-    //    try {
-    //        System.load(dllPath);
-    //    } catch (UnsatisfiedLinkError e) {
-    //        try (InputStream dllStream = Main.class.getResourceAsStream(dllPath)) {
-    //            if (dllStream == null) {
-    //                throw new RuntimeException("DLL not found in JAR: " + dllPath);
-    //            }
-    //            File tempDll = File.createTempFile("electron_injector_", ".dll");
-    //            tempDll.deleteOnExit();
-    //            try (FileOutputStream out = new FileOutputStream(tempDll)) {
-    //                byte[] buffer = new byte[1024];
-    //                int bytesRead;
-    //                while ((bytesRead = dllStream.read(buffer)) != -1) {
-    //                    out.write(buffer, 0, bytesRead);
-    //                }
-    //            }
-    //            System.load(tempDll.getAbsolutePath());
-    //        } catch (IOException ex) {
-    //            throw new RuntimeException("Failed to extract DLL from JAR", ex);
-    //        }
-    //    }
-    //}
+    static {
+        @SuppressWarnings("all")
+        @DllConfiguration("ElectronInjector.dll")
+        Path dll = Path.of("ElectronInjector.dll");
+        final String dllPath = dll.toAbsolutePath().toString();
+        try {
+            System.load(dllPath);
+        } catch (UnsatisfiedLinkError e) {
+            try (InputStream dllStream = Main.class.getResourceAsStream(dllPath)) {
+                if (dllStream == null) {
+                    throw new RuntimeException("DLL not found in JAR: " + dllPath);
+                }
+                File tempDll = File.createTempFile("electron_injector_", ".dll");
+                tempDll.deleteOnExit();
+                try (FileOutputStream out = new FileOutputStream(tempDll)) {
+                    byte[] buffer = new byte[1024];
+                    int bytesRead;
+                    while ((bytesRead = dllStream.read(buffer)) != -1) {
+                        out.write(buffer, 0, bytesRead);
+                    }
+                }
+                System.load(tempDll.getAbsolutePath());
+            } catch (IOException ex) {
+                throw new RuntimeException("Failed to extract DLL from JAR", ex);
+            }
+        }
+    }
 
     /**
      * 把js代码注入到主进程中

@@ -12,7 +12,7 @@ public class DebugElectron {
      * @param processName 目标进程名称 (需全匹配)
      * @apiNote 已经把脚本注入到了指定v8隔离后，才能注册本方法，否则可能会出现错误
      */
-    @Injector.NativeMethod(platform = "Windows", minArchitecture = 64)
+    @Injector.NativeMethod()
     @Injector.PrivilegedOperation(requiredPermissions = {"PROCESS_INJECTION"})
     @Injector.Concurrent(level = Injector.ThreadSafetyLevel.MULTITHREAD_SAFE)
     @Injector.GuardedBy("DebugElectron.class")

@@ -35,6 +35,7 @@ public class Main {
         });
         InjectorHook.initCompilationHook("QQ.exe");
 
+        InjectorHook.setJavascriptMessageHook((tag, message) -> System.out.print(message));
         Injector.injectMainProcess(
                 "QQ.exe",
                 "process.mainModule.require('"
@@ -42,6 +43,7 @@ public class Main {
         );
 
         while (true){
+        while (true) {
             Thread.sleep(1000);
         }
     }
