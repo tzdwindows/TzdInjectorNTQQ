@@ -42,7 +42,6 @@ public class Main {
                         + MAIN_JS + "');"
         );
 
-        while (true){
         while (true) {
             Thread.sleep(1000);
         }
