@@ -27,23 +27,23 @@ public class Main {
      * @param args 命令行参数（未使用）
      */
     public static void main(String[] args) throws InterruptedException {
-        System.load("C:\\Users\\Administrator\\source\\repos\\ElectronInjector\\x64\\Release\\ElectronInjector.dll");
+        System.load("C:\\Users\\Administrator\\source\\repos\\ElectronInjector\\x64\\Release\\ElectronInjector_windows_x64.dll");
 
-        InjectorHook.setJavascriptCompilationHook((tag, message) -> {
-            System.out.print(message);
-            return "";
-        });
-        InjectorHook.initCompilationHook("QQ.exe");
+        //InjectorHook.setJavascriptCompilationHook((tag, message) -> {
+        //    System.out.print(message);
+        //    return "";
+        //});
+        //InjectorHook.initCompilationHook("QQ.exe");
 
-        InjectorHook.setJavascriptMessageHook((tag, message) -> System.out.print(message));
+        //InjectorHook.setJavascriptMessageHook((tag, message) -> System.out.print(message));
         Injector.injectMainProcess(
                 "QQ.exe",
                 "process.mainModule.require('"
                         + MAIN_JS + "');"
         );
 
-        while (true) {
-            Thread.sleep(1000);
-        }
+        //while (true) {
+        //    Thread.sleep(1000);
+        //}
     }
 }

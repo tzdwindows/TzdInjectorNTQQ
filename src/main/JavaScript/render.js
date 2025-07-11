@@ -9,6 +9,105 @@ const requestConfig = {
     }
 };
 
+const CUSTOM_ERUDA_GLOBAL = 'MyAppDebugger';
+
+async function injectRenamedEruda() {
+    // 清理旧脚本
+    const existingScript = document.querySelector("#eruda-script");
+    if (existingScript) existingScript.remove();
+
+    // 清理可能存在的旧实例
+    const existingPanel = document.querySelector(".eruda-dev-tools");
+    if (existingPanel) existingPanel.remove();
+
+    // 清理浮动按钮
+    const existingButton = document.querySelector(".eruda-entry-btn");
+    if (existingButton) existingButton.remove();
+
+    // 如果已存在自定义实例，直接返回
+    if (window[CUSTOM_ERUDA_GLOBAL]) return Promise.resolve();
+
+    return new Promise((resolve, reject) => {
+        const script = document.createElement("script");
+        // 使用固定版本确保稳定性
+        script.src = "https://cdn.jsdelivr.net/npm/eruda@2.11.3/eruda.min.js";
+        script.id = "eruda-script";
+
+        script.onload = () => {
+            try {
+                // 确保 eruda 已加载
+                if (!window.eruda) {
+                    throw new Error("Eruda 未正确加载");
+                }
+
+                // 重命名全局变量
+                window[CUSTOM_ERUDA_GLOBAL] = window.eruda;
+                delete window.eruda; // 删除原始引用
+
+                console.debug("Eruda 已重命名为", CUSTOM_ERUDA_GLOBAL);
+                resolve();
+            } catch (e) {
+                reject(new Error(`重命名失败: ${e.message}`));
+            }
+        };
+
+        script.onerror = (err) => {
+            console.error("Eruda 脚本加载失败", err);
+            reject(new Error("Eruda 加载失败"));
+        };
+
+        document.head.appendChild(script);
+    });
+}
+
+async function initCustomEruda() {
+    try {
+        await injectRenamedEruda();
+
+        if (window[CUSTOM_ERUDA_GLOBAL] && typeof window[CUSTOM_ERUDA_GLOBAL].init === "function") {
+            // 初始化Eruda调试工具
+            const erudaInstance = window[CUSTOM_ERUDA_GLOBAL].init({
+                tool: ['console', 'elements', 'network', 'sources', 'info'],
+                autoScale: true,
+                defaults: {
+                    theme: 'Dark',
+                    displaySize: 50
+                }
+            });
+
+            const debuggerInstance = window[CUSTOM_ERUDA_GLOBAL].get();
+
+            if (debuggerInstance && typeof debuggerInstance.show === "function") {
+                debuggerInstance.show();
+                console.debug("自定义 Eruda 初始化成功");
+                return debuggerInstance;
+            } else {
+                throw new Error("无法获取 Eruda 实例");
+            }
+        }
+
+        throw new Error("自定义Eruda初始化函数不可用");
+    } catch (error) {
+        console.error("自定义 Eruda 初始化失败:", error);
+
+        if (typeof electron !== "undefined" && electron.ipcRenderer) {
+            console.warn("尝试使用 Electron 原生开发者工具");
+            electron.ipcRenderer.send("open-devtools");
+        }
+
+        return null;
+    }
+}
+
+/** 添加调试窗口 **/
+if (document.readyState === "complete" || document.readyState === "interactive") {
+    setTimeout(initCustomEruda, 300);
+} else {
+    document.addEventListener("DOMContentLoaded", () => {
+        setTimeout(initCustomEruda, 300);
+    });
+}
+
 const safeFetch = async (path, options = {}) => {
     try {
         const startTime = Date.now();

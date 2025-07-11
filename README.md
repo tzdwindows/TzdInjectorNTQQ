@@ -35,7 +35,7 @@
 **修复**
 - 当传输给Java层的编译器钩子数据大于65536字节， 
 自动截断并且先发送给Java端后自动返回源数据，Java端无权修改大于65536字节的源代码的代码，
-并且添加了当返回空白字符时自动使用源数据，修改地址在 *ElectronInjector\ElectronInjector\v8_printer_hook.h* 文件中的 *CallbackJavaLayer_Return* 函数
+并且添加了当返回空白字符时自动使用源数据，修改地址在 *[ElectronInjector\ElectronInjector\v8_printer_hook.h](https://github.com/tzdwindows/TzdInjectorNTQQ/blob/main/src/main/native/ElectronInjector/v8_printer_hook.h)* 文件中的 *CallbackJavaLayer_Return* 函数
 
 ### 1.1.1 - 2025-5-25
 **新增**

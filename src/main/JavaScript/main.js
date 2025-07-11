@@ -3,6 +3,7 @@ const path = require('path')
 const fs = require('fs').promises;
 const http = require('http');
 const url = require('url');
+const { createServer } = require('net');
 
 const PRELOAD_SCRIPT_PATH = path.join(
     __dirname,
@@ -564,6 +565,36 @@ initServer().catch(e => {
     console.error('[API] 服务初始化失败:', e);
     process.exit(1);
 });
+
+// 存储调试端口的映射表
+const debugPortMap = new Map();
+
+function enableOfficialDebugging(win, port) {
+    try {
+        // 检查是否已附加
+        if (!win.webContents.debugger.isAttached()) {
+            win.webContents.debugger.attach()
+        }
+
+        // 添加事件监听确认状态
+        win.webContents.debugger.on('attach', () => {
+            console.log('✅ 调试器已附加到端口', port)
+        })
+
+        win.webContents.debugger.on('detach', (_, reason) => {
+            console.warn('⚠️ 调试器分离:', reason)
+        })
+
+        // 发送初始化命令
+        win.webContents.debugger.sendCommand('Target.setDiscoverTargets', {
+            discover: true
+        })
+        return port
+    } catch (err) {
+        console.error('❌ 调试器附加失败:', err)
+        return null
+    }
+}
 
 app.whenReady().then(() => {
     console.log('[Electron] 已加载插件系统')
