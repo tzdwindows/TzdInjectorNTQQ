@@ -9,7 +9,7 @@ const requestConfig = {
     }
 };
 
-const CUSTOM_ERUDA_GLOBAL = 'MyAppDebugger';
+/**const CUSTOM_ERUDA_GLOBAL = 'MyAppDebugger';
 
 async function injectRenamedEruda() {
     // 清理旧脚本
@@ -30,7 +30,7 @@ async function injectRenamedEruda() {
     return new Promise((resolve, reject) => {
         const script = document.createElement("script");
         // 使用固定版本确保稳定性
-        script.src = "https://cdn.jsdelivr.net/npm/eruda@2.11.3/eruda.min.js";
+        script.src = "https://cdn.jsdelivr.net/npm/eruda@3.4.3/eruda.min.js";
         script.id = "eruda-script";
 
         script.onload = () => {
@@ -63,6 +63,7 @@ async function injectRenamedEruda() {
 async function initCustomEruda() {
     try {
         await injectRenamedEruda();
+        await loadPlugins();
 
         if (window[CUSTOM_ERUDA_GLOBAL] && typeof window[CUSTOM_ERUDA_GLOBAL].init === "function") {
             // 初始化Eruda调试工具
@@ -99,14 +100,36 @@ async function initCustomEruda() {
     }
 }
 
-/** 添加调试窗口 **/
+function loadScript(src) {
+    return new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = src;
+        script.onload = resolve;
+        script.onerror = reject;
+        document.head.appendChild(script);
+    });
+}
+
+async function loadPlugins() {
+    const plugins = [
+        'https://cdn.jsdelivr.net/npm/eruda-touches',
+        'https://cdn.jsdelivr.net/npm/eruda-monitor',
+        'https://cdn.jsdelivr.net/npm/eruda-features'
+    ];
+
+    for (const plugin of plugins) {
+        await loadScript(plugin);
+    }
+}
+
+/**  添加调试窗口
 if (document.readyState === "complete" || document.readyState === "interactive") {
     setTimeout(initCustomEruda, 300);
 } else {
     document.addEventListener("DOMContentLoaded", () => {
         setTimeout(initCustomEruda, 300);
     });
-}
+}**/
 
 const safeFetch = async (path, options = {}) => {
     try {
