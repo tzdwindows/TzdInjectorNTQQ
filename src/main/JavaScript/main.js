@@ -4,7 +4,6 @@ const fs = require('fs').promises;
 const http = require('http');
 const url = require('url');
 const net = require("net");
-const chii = require("chii");
 
 
 const PRELOAD_SCRIPT_PATH = path.join(

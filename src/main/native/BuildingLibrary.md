@@ -1,36 +1,36 @@
-# 如何构建 **ElectronInjector** 链接库
+# How to Build the **ElectronInjector** Link Library
 
-## 环境准备
-1. 安装 **Visual Studio 2022**
-   - 在安装时选择：
-     - "使用C++的桌面开发" 工作负载
-     - Windows SDK（推荐最新版本）
-     - C++ MFC 用于最新 v143 生成工具（可选）
+## Environment Preparation
+1. Install **Visual Studio 2022**
+    - During installation, select:
+        - "Desktop development with C++" workload
+        - Windows SDK (recommended: latest version)
+        - C++ MFC for latest v143 build tools (optional)
 
-## 一、准备所需库文件
+## I. Prepare Required Library Files
 
-### 1. Detours 库
-- 获取方式：
-  ```bash
-  git clone https://github.com/microsoft/Detours.git
-  ```
+### 1. Detours Library
+- How to obtain:
+  ```bash  
+  git clone https://github.com/microsoft/Detours.git  
+  ```  
 
-### 2. rusty_v8 库
-- 获取方式：
-    - 预编译二进制（推荐）：
-      ```bash
-      git clone https://github.com/denoland/rusty_v8
-      ```
-    - 或从 [rusty_v8 发布页](https://github.com/denoland/rusty_v8) 下载自行构建
+### 2. rusty_v8 Library
+- How to obtain:
+    - Precompiled binaries (recommended):
+      ```bash  
+      git clone https://github.com/denoland/rusty_v8  
+      ```  
+    - Or download and build from [rusty_v8 release page](https://github.com/denoland/rusty_v8)
 
-- 关键文件：
-    - `include` 目录：所有 V8 头文件
-    - `release` 目录：`v8_monolith.lib`，`v8.dll` 等
+- Key files:
+    - `include` directory: All V8 header files
+    - `release` directory: `v8_monolith.lib`, `v8.dll`, etc.
 
-### 3. Corretto JDK (include 部分)
-- 下载 [Amazon Corretto 20.0.2.1](https://docs.aws.amazon.com/corretto/latest/corretto-20-ug/downloads-list.html)
-- 关键目录：
-    - `include`：JDK 原生接口头文件
-    - `include\win32`：Windows 平台特定头文件
+### 3. Corretto JDK (include section)
+- Download [Amazon Corretto 20.0.2.1](https://docs.aws.amazon.com/corretto/latest/corretto-20-ug/downloads-list.html)
+- Key directories:
+    - `include`: JDK native interface header files
+    - `include\win32`: Windows platform-specific header files
 
-这份指南提供了从环境准备到最终配置的完整流程，包含了具体路径设置和常见问题解决方案，可帮助开发者顺利构建 ElectronInjector 链接库。
+This guide provides a complete workflow from environment setup to final configuration, including specific path settings and solutions to common issues, helping developers successfully build the ElectronInjector link library.

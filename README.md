@@ -1,183 +1,181 @@
 # QQ Plugin Injector
 
-[![License: LGPL v3](https://img.shields.io/badge/License-LGPL_v3-blue.svg)](https://www.gnu.org/licenses/lgpl-3.0)
+[![License: LGPL v3](https://img.shields.io/badge/License-LGPL_v3-blue.svg)](https://www.gnu.org/licenses/lgpl-3.0)  
 ![Java Version](https://img.shields.io/badge/Java-11%2B-blue)
 
-基于Electron架构实现的QQ客户端JavaScript执行环境控制工具，提供动态代码注入、消息监控和调试控制能力。
+A JavaScript execution environment control tool for QQ clients based on the Electron architecture, providing dynamic code injection, message monitoring, and debugging control capabilities.
+一个可以动态植入QQ客户端的JavaScript执行环境控制的工具
+[中文](https://github.com/tzdwindows/TzdInjectorNTQQ/blob/main/README_ZH.md) [English](https://github.com/tzdwindows/TzdInjectorNTQQ/blob/main/README.md)
 
-⚠️ **请务必阅读[免责声明](#免责声明)后再使用**
+See how c++ modules are built [BuildingLibrary.md](https://github.com/tzdwindows/TzdInjectorNTQQ/blob/main/src/main/native/BuildingLibrary.md)
 
-## 功能特性
+⚠️ **Please read the [Disclaimer](#disclaimer) carefully before use**
 
-- 🚀 **动态代码注入**  
-  实时向QQ主进程注入JavaScript代码
-- 🔗 **编译器钩子机制**  
-  拦截/修改JavaScript编译过程
-- 📡 **消息监控系统**  
-  捕获客户端JavaScript消息事件
+## Features
 
-对比维度示例表：
-| 特性                | 传统方法       | 本方案动态注入       |
-|--------------------|--------------|-------------------|
-| 代码生效速度        | 需要重启      | 实时生效           |
-| 文件修改风险        | 高风险        | 零风险            |
-| 消息捕获能力        | 不可用        | 完整事件流监控      |
-| 编译器控制          | 无           | AST级别代码修改    |
-| 调试支持            | 仅控制台      | 完整DevTools集成   |
-| 多进程支持          | 单进程        | Renderer/GPU进程全覆盖 |
-| 反检测机制          | 易被识别      | 内存驻留规避检测     |
+- 🚀 **Dynamic Code Injection**  
+  Inject JavaScript code into the QQ main process in real time
+- 🔗 **Compiler Hook Mechanism**  
+  Intercept/modify the JavaScript compilation process
+- 📡 **Message Monitoring System**  
+  Capture JavaScript message events from the client
 
-通过Java Native Access实现的原生内存操作，相比Electron插件方案具有更好的进程间通信稳定性和更低的内存占用率（实测降低40%内存开销）。
+Comparison table example:  
+| Feature               | Traditional Method | Dynamic Injection (This Solution) |  
+|----------------------|-------------------|----------------------------------|  
+| Code Activation Speed | Requires restart  | Real-time生效                    |  
+| File Modification Risk | High risk         | Zero risk                        |  
+| Message Capture Capability | Unavailable      | Full event stream monitoring     |  
+| Compiler Control      | None              | AST-level code modification      |  
+| Debugging Support     | Console only      | Full DevTools integration        |  
+| Multi-process Support | Single process    | Renderer/GPU process全覆盖       |  
+| Anti-detection Mechanism | Easily detected | Memory-resident evasion          |
 
-## 更新日志
+Native memory operations implemented via Java Native Access offer better inter-process communication stability and lower memory usage (40% reduction in testing) compared to Electron plugin solutions.
+
+## Changelog
 
 ### 1.1.2 - 2025-7-7
-**修复**
-- 当传输给Java层的编译器钩子数据大于65536字节，
-  自动截断并且先发送给Java端后自动返回源数据，Java端无权修改大于65536字节的源代码的代码，
-  并且添加了当返回空白字符时自动使用源数据，修改地址在 *[ElectronInjector\ElectronInjector\v8_printer_hook.h](https://github.com/tzdwindows/TzdInjectorNTQQ/blob/main/src/main/native/ElectronInjector/v8_printer_hook.h)* 文件中的 *CallbackJavaLayer_Return* 函数
+**Fixes**
+- When the compiler hook data transmitted to the Java layer exceeds 65536 bytes, it is automatically truncated and sent to the Java side first, then the original data is returned. The Java side cannot modify source code exceeding 65536 bytes. Blank returns automatically revert to the original data. The modification is located in the *CallbackJavaLayer_Return* function in *[ElectronInjector\ElectronInjector\v8_printer_hook.h](https://github.com/tzdwindows/TzdInjectorNTQQ/blob/main/src/main/native/ElectronInjector/v8_printer_hook.h)*.
 
 ### 1.1.1 - 2025-5-25
-**新增**
-- 增加多进程并行注入机制，提升渲染进程注入效率
-- 添加远程线程执行超时检测（5000ms），防止进程阻塞
+**Additions**
+- Added multi-process parallel injection mechanism to improve renderer process injection efficiency
+- Added remote thread execution timeout detection (5000ms) to prevent process blocking
 
-**修复**
-- 修正跨线程资源竞争问题
-    - 为每个注入线程创建独立的 JS 代码副本
-    - 使用 RAII 模式管理内存和句柄
-- 修复 *injectRendererProcess*  注入导致进程堵塞的问题
+**Fixes**
+- Fixed cross-thread resource competition issues
+  - Created independent JS code copies for each injection thread
+  - Used RAII pattern for memory and handle management
+- Fixed *injectRendererProcess* causing process blockage
 
-**注意事项**
-1. 建议配合 Electron 主进程监控使用
-2. 注入超时记录需在业务层实现日志接口
-3. *setJavascriptCompilationHook* 暂时只支持对主进程的编译钩子，请期待后续更新
+**Notes**
+1. Recommended for use with Electron main process monitoring
+2. Injection timeout logging requires business-layer log interface implementation
+3. *setJavascriptCompilationHook* currently only supports compilation hooks for the main process. Stay tuned for updates.
 
 ### 1.1.0 - 2025-4-11
-**功能改进**
-- 扩展消息钩子功能，现支持监听除V8级消息外的其他消息类型
+**Improvements**
+- Expanded message hook functionality to support monitoring non-V8-level messages
 
 ### 1.0.0 - 2025-4-7
-**初始发布**
-- 项目首个稳定版本发布
+**Initial Release**
+- First stable version of the project
 
-## 技术对比：动态注入 vs 传统方法
+## Technical Comparison: Dynamic Injection vs. Traditional Methods
 
-### 传统注入方式局限性
-- ⏳ **静态修改**  
-  需要直接修改JS文件，触发客户端签名校验
-- 🔄 **重启依赖**  
-  每次修改必须重启QQ客户端生效
-- 📶 **单向通信**  
-  只能发送指令，无法获取实时反馈
-- 🚫 **功能单一**  
-  缺乏消息监控和编译拦截能力
-- ⚠️ **高检测风险**  
-  易被安全机制识别为异常行为
+### Limitations of Traditional Injection
+- ⏳ **Static Modification**  
+  Requires direct JS file changes, triggering client signature verification
+- 🔄 **Restart Dependency**  
+  Modifications require QQ client restart
+- 📶 **One-way Communication**  
+  Only sends commands, no real-time feedback
+- 🚫 **Limited Functionality**  
+  Lacks message monitoring and compilation interception
+- ⚠️ **High Detection Risk**  
+  Easily flagged as suspicious by security mechanisms
 
-### 本方案核心优势
-- ⚡ **实时热更新**  
-  动态注入无需重启客户端进程
-- 🛡 **规避校验机制**  
-  内存级注入不修改原始文件
-- 🔄 **双向交互通道**  
-  支持接收JS环境事件回调
-- 🧩 **模块化扩展**  
-  通过编译器钩子实现深度定制
-- 🕵️ **隐蔽式操作**  
-  注入过程完全驻留内存
-- 🌐 **版本自适应**  
-  兼容QQ NT各版本架构
-- 🔧 **调试一体化**  
-  原生集成Chrome调试协议
+### Core Advantages of This Solution
+- ⚡ **Real-time Hot Updates**  
+  Dynamic injection requires no client restart
+- 🛡 **Bypasses Verification**  
+  Memory-level injection leaves original files untouched
+- 🔄 **Two-way Interaction**  
+  Supports JS environment event callbacks
+- 🧩 **Modular Expansion**  
+  Deep customization via compiler hooks
+- 🕵️ **Stealth Operations**  
+  Injection fully resides in memory
+- 🌐 **Version Adaptability**  
+  Compatible with QQ NT architecture across versions
+- 🔧 **Integrated Debugging**  
+  Native Chrome debugging protocol support
 
-对比维度示例表：
-| 特性                | 传统方法       | 本方案动态注入       |
-|--------------------|--------------|-------------------|
-| 代码生效速度        | 需要重启      | 实时生效           |
-| 文件修改风险        | 高风险        | 零风险            |
-| 消息捕获能力        | 不可用        | 完整事件流监控      |
-| 编译器控制          | 无           | AST级别代码修改    |
-| 调试支持            | 仅控制台      | 完整DevTools集成   |
-| 多进程支持          | 单进程        | Renderer/GPU进程全覆盖 |
-| 反检测机制          | 易被识别      | 内存驻留规避检测     |
+Comparison table example:  
+| Feature               | Traditional Method | Dynamic Injection (This Solution) |  
+|----------------------|-------------------|----------------------------------|  
+| Code Activation Speed | Requires restart  | Real-time生效                    |  
+| File Modification Risk | High risk         | Zero risk                        |  
+| Message Capture Capability | Unavailable      | Full event stream monitoring     |  
+| Compiler Control      | None              | AST-level code modification      |  
+| Debugging Support     | Console only      | Full DevTools integration        |  
+| Multi-process Support | Single process    | Renderer/GPU process全覆盖       |  
+| Anti-detection Mechanism | Easily detected | Memory-resident evasion          |
 
-通过Java Native Access实现的原生内存操作，相比Electron插件方案具有更好的进程间通信稳定性和更低的内存占用率（实测降低40%内存开销）。
+Native memory operations via Java Native Access offer better IPC stability and lower memory usage (40% reduction in testing) compared to Electron plugins.
 
-## 快速开始
+## Quick Start
 
-### 环境要求
+### Requirements
 - Java 11+
-- QQ NT版本 (Electron架构)
-- Windows 10/11系统
+- QQ NT version (Electron architecture)
+- Windows 10/11
 
-### 基础用法
-```java
+### Basic Usage
+```java  
+// Example 1: Inject console log into main process  
+Injector.injectMainProcess("QQ.exe", "console.log('Injected!');");  
 
-// 示例1：注入主进程的控制台日志
-Injector.injectMainProcess("QQ.exe", "console.log('Injected!');");
+// Example 1: Inject console log into renderer process  
+Injector.injectRendererProcess("QQ.exe", "console.log('Injected!');");  
 
-// 示例1：注入渲染进程的控制台日志
-Injector.injectRendererProcess("QQ.exe", "console.log('Injected!');");
+// Example 2: Register message hook  
+InjectorHook.setJavascriptMessageHook((tag, msg) -> {  
+    System.out.println("[Message] " + tag + ": " + msg);  
+});  
 
-// 示例2：注册消息钩子
-InjectorHook.setJavascriptMessageHook((tag, msg) -> {
-    System.out.println("[Message] " + tag + ": " + msg);
-});
+// Example 3: Launch QQ and monitor global V8 context creation  
+//Injector.additionalProgram("QQ.exe");  
+// Inject code into global V8 context  
+//Injector.executeJavascript("window.showDevTools()");  
+```  
 
-// 示例3：启动QQ程序并监控全局的上v8下文创建
-//Injector.additionalProgram("QQ.exe");
-// 将代码注入到全局的v8上下文中
-//Injector.executeJavascript("window.showDevTools()");
-// 
-```
+## Advanced Configuration
 
-## 高级配置
+### Java API List
+| Method | Parameters | Description |  
+|--------|------------|-------------|  
+| `injectMainProcess()` | `processName, script` | Dynamically inject JS into main process |  
+| `injectRendererProcess()` | `processName, script` | Dynamically inject JS into renderer process |  
+| `initCompilationHook()` | `processName` | Initialize compiler hook |  
+| `setJavascriptCompilationHook()` | `BiFunction<String, String>` | Intercept compilation process |  
+| `initMessageHook()` | `processName` | Initialize message hook |  
+| `additionalProgram()` | `launchCommand` | Attach debug process |  
 
-### Java API 列表
-| 方法 | 参数 | 描述            |
-|------|------|---------------|
-| `injectMainProcess()` | `processName, script` | 在主进程中动态注入JS代码 |
-| `injectRendererProcess()` | `processName, script` | 在渲染进程中动态注入JS代码 |
-| `initCompilationHook()` | `processName` | 初始化编译器钩子      |
-| `setJavascriptCompilationHook()` | `BiFunction<String, String>` | 编译过程拦截        |
-| `initMessageHook()` | `processName` | 初始化消息钩子       |
-| `additionalProgram()` | `launchCommand` | 附加调试进程        |
+### Javascript API List
+| Method | Parameters | Description |  
+|--------|------------|-------------|  
+| `global.windowManager.requestInjection()` | `window,path` | Inject JS script into specified window's renderer thread |  
 
+### Javascript Events List
+| Event Name | Declaration | Description |  
+|------------|-------------|-------------|  
+| `onLogin` | `exports.onLogin = (uid) => {console.log(`User ${uid} logged in`)}` | Executed on user login (deprecated, no longer maintained) |  
+| `onBrowserWindowCreated` | `exports.onBrowserWindowCreated = (window) => {console.log('[Electron] Window created')}` | Executed on window creation |  
 
-### Javascript API 列表
-| 方法 | 参数 | 描述                        |
-|------|------|---------------------------|
-| `global.windowManager.requestInjection()` | `window,path` | 在指定窗口的渲染线程中注入Javascript脚本 |
+### Debug Parameters
+Recommended QQ launch parameters:
+```bash  
+--remote-debugging-port=9222   # Enable debug protocol  
+--enable-logging=stderr        # Show console logs  
+--disable-session-crashed-bubble  # Disable crash prompts  
+```  
+(Recommended to use a .bat file to launch QQ for debugging)
 
-### Javascript 事件 列表
-| 事件名称                                      | 事件声明                                                                            | 描述                 |
-|-------------------------------------------|---------------------------------------------------------------------------------|--------------------|
-| `onLogin` | `exports.onLogin = (uid) => {console.log(`用户 ${uid} 登录`)}`                      | 当用户登录时被执行（已弃用不再维护） |
-| `onBrowserWindowCreated` | `exports.onBrowserWindowCreated = (window) => {console.log('[Electron] 窗口创建')}` | 当窗口创建时被执行          |
+## Disclaimer
 
+**This tool is for educational and research purposes only regarding Electron architecture and JavaScript injection technology. Users must strictly adhere to the following terms:**
 
-### 调试参数
-推荐QQ启动参数：
-```bash
---remote-debugging-port=9222   # 启用调试协议
---enable-logging=stderr        # 显示控制台日志
---disable-session-crashed-bubble  # 禁用崩溃提示
-```
-（建议使用bat启动调试QQ）
+1. Prohibited for any violation of the "Computer Software Protection Regulations"
+2. No reverse engineering, modification, or distribution of modified versions of the Tencent QQ client
+3. Prohibited for commercial use or actions harming Tencent's legal rights
+4. Users must ensure proper authorization for QQ client usage
+5. Developers assume no liability for misuse of this tool
 
-## 免责声明
+Use of this tool signifies acceptance of these terms. All risks are borne by the user.
 
-**本工具仅供学习研究Electron架构及JavaScript注入技术之用，使用者应严格遵守以下条款：**
-
-1. 禁止用于任何违反《计算机软件保护条例》的行为
-2. 不得对腾讯QQ客户端进行逆向工程、篡改或分发修改版本
-3. 禁止用于商业用途或损害腾讯公司合法权益的行为
-4. 使用者需确保已获得QQ客户端的合法使用授权
-5. 开发者不承担任何因滥用本工具导致的法律责任
-
-使用本工具即表示您已阅读并同意以上条款，所有风险由使用者自行承担。
-
-## 许可证
+## License
 
 [GNU Lesser General Public License v3.0](LICENSE) © 2025 tzdwindows7
