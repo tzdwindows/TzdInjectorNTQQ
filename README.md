@@ -1,13 +1,15 @@
 # QQ Plugin Injector
 
-[![License: LGPL v3](https://img.shields.io/badge/License-LGPL_v3-blue.svg)](https://www.gnu.org/licenses/lgpl-3.0)  
+[![License: LGPL v3](https://img.shields.io/badge/License-LGPL_v3-blue.svg)](https://www.gnu.org/licenses/lgpl-3.0)
 ![Java Version](https://img.shields.io/badge/Java-11%2B-blue)
 
 A JavaScript execution environment control tool for QQ clients based on the Electron architecture, providing dynamic code injection, message monitoring, and debugging control capabilities.
-一个可以动态植入QQ客户端的JavaScript执行环境控制的工具
-[中文](https://github.com/tzdwindows/TzdInjectorNTQQ/blob/main/README_ZH.md) [English](https://github.com/tzdwindows/TzdInjectorNTQQ/blob/main/README.md)
 
-See how c++ modules are built [BuildingLibrary.md](https://github.com/tzdwindows/TzdInjectorNTQQ/blob/main/src/main/native/BuildingLibrary.md)
+一个可以动态植入 QQ 客户端的 JavaScript 执行环境控制的工具
+
+[中文](https://github.com/tzdwindows/TzdInjectorNTQQ/blob/main/README_ZH.md) | [English](https://github.com/tzdwindows/TzdInjectorNTQQ/blob/main/README.md)
+
+See how C++ modules are built: [BuildingLibrary.md](https://github.com/tzdwindows/TzdInjectorNTQQ/blob/main/src/main/native/BuildingLibrary.md)
 
 ⚠️ **Please read the [Disclaimer](#disclaimer) carefully before use**
 
