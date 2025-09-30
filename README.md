@@ -25,12 +25,12 @@ See how C++ modules are built: [BuildingLibrary.md](https://github.com/tzdwindow
 Comparison table example:  
 | Feature               | Traditional Method | Dynamic Injection (This Solution) |  
 |----------------------|-------------------|----------------------------------|  
-| Code Activation Speed | Requires restart  | Real-time生效                    |  
+| Code Activation Speed | Requires restart  | Effective in Real time                    |  
 | File Modification Risk | High risk         | Zero risk                        |  
 | Message Capture Capability | Unavailable      | Full event stream monitoring     |  
 | Compiler Control      | None              | AST-level code modification      |  
 | Debugging Support     | Console only      | Full DevTools integration        |  
-| Multi-process Support | Single process    | Renderer/GPU process全覆盖       |  
+| Multi-process Support | Single process    | Renderer/GPU process full coverage       |  
 | Anti-detection Mechanism | Easily detected | Memory-resident evasion          |
 
 Native memory operations implemented via Java Native Access offer better inter-process communication stability and lower memory usage (40% reduction in testing) compared to Electron plugin solutions.
@@ -103,7 +103,7 @@ Comparison table example:
 | Message Capture Capability | Unavailable      | Full event stream monitoring     |  
 | Compiler Control      | None              | AST-level code modification      |  
 | Debugging Support     | Console only      | Full DevTools integration        |  
-| Multi-process Support | Single process    | Renderer/GPU process全覆盖       |  
+| Multi-process Support | Single process    | Renderer/GPU process full coverage       |  
 | Anti-detection Mechanism | Easily detected | Memory-resident evasion          |
 
 Native memory operations via Java Native Access offer better IPC stability and lower memory usage (40% reduction in testing) compared to Electron plugins.
