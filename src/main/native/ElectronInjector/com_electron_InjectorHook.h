@@ -2,6 +2,9 @@
 #include <jni.h>
 /* Header for class com_electron_InjectorHook */
 
+extern JavaVM* g_jvm;
+extern JNIEnv* env_global;
+
 #ifndef _Included_com_electron_InjectorHook
 #define _Included_com_electron_InjectorHook
 #ifdef __cplusplus

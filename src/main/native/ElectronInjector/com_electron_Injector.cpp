@@ -1,4 +1,6 @@
-﻿#include "pch.h"
+﻿#define _SILENCE_CXX17_CODECVT_HEADER_DEPRECATION_WARNING
+
+#include "pch.h"
 
 #include "com_electron_Injector.h"
 #include "com_electron_InjectorHook.h"
@@ -18,9 +20,11 @@
 #include <psapi.h>
 
 #pragma comment(lib, "ntdll.lib")
+#pragma comment(lib, "WindowsApp.lib")
 
 #include "v8Tools.h"
 #include "APC.h"
+#include "InjectorCore.h"
 
 #pragma data_seg(".shared")
 DWORD_PTR g_remoteDllBase = 0;
@@ -35,6 +39,23 @@ typedef NTSTATUS(NTAPI* _NtQueryInformationProcess)(
     PULONG ReturnLength
     );
 
+typedef enum _MEMORY_INFORMATION_CLASS {
+    MemoryControlFlowGuardPolicy = 10
+} MEMORY_INFORMATION_CLASS;
+
+typedef struct _MEMORY_RANGE_ENTRY {
+    PVOID VirtualAddress;
+    SIZE_T NumberOfBytes;
+} MEMORY_RANGE_ENTRY, * PMEMORY_RANGE_ENTRY;
+
+typedef NTSTATUS(NTAPI* _NtSetInformationVirtualMemory)(
+    HANDLE ProcessHandle,
+    MEMORY_INFORMATION_CLASS VmInformationClass,
+    ULONG_PTR NumberOfEntries,
+    PMEMORY_RANGE_ENTRY VirtualAddresses,
+    PVOID VmInformation,
+    ULONG VmInformationLength
+    );
 
 typedef struct _PROCESS_PARAMETERS {
     ULONG MaximumLength;
@@ -68,10 +89,122 @@ BOOL SetDebugPrivilege() {
     return result;
 }
 
+void DisableCFG_NtSetInformationVirtualMemory()
+{
+    HMODULE ntdll = GetModuleHandleA("ntdll.dll");
+    _NtSetInformationVirtualMemory NtSetInformationVirtualMemory =
+        (_NtSetInformationVirtualMemory)GetProcAddress(ntdll, "NtSetInformationVirtualMemory");
+
+    if (NtSetInformationVirtualMemory)
+    {
+        // 尝试禁用CFG - 参数构造极其复杂且容易出错
+        ULONG cfgPolicy = 0; // 0表示禁用
+        MEMORY_RANGE_ENTRY rangeEntry = { 0 };
+
+        NtSetInformationVirtualMemory(
+            GetCurrentProcess(),
+            MemoryControlFlowGuardPolicy,
+            1,
+            &rangeEntry,
+            &cfgPolicy,
+            sizeof(cfgPolicy)
+        );
+    }
+}
+
+void ConfigureCFGBypass() {
+    PROCESS_MITIGATION_CONTROL_FLOW_GUARD_POLICY cfgPolicy = {};
+    cfgPolicy.EnableControlFlowGuard = 1;
+    cfgPolicy.EnableExportSuppression = 1; // 通常也启用导出抑制
+
+    // 1. 首先尝试标准方法设置CFG策略
+    if (!SetProcessMitigationPolicy(ProcessControlFlowGuardPolicy, &cfgPolicy, sizeof(cfgPolicy))) {
+        DWORD error = GetLastError();
+        LPSTR errorMessage = nullptr;
+        FormatMessageA(
+            FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+            nullptr,
+            error,
+            MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+            (LPSTR)&errorMessage,
+            0,
+            nullptr
+        );
+
+        // 输出错误信息（调试用）
+        OutputDebugStringA("SetProcessMitigationPolicy failed: ");
+        OutputDebugStringA(errorMessage);
+        LocalFree(errorMessage);
+
+        // 2. 标准方法失败，尝试使用 SetProcessValidCallTargets 进行绕过
+        // 获取目标DLL的基址和大小
+        if (g_remoteDllBase == 0) {
+            g_remoteDllBase = (DWORD_PTR)g_hModule;
+        }
+
+        // 获取模块信息以确定代码区域大小
+        // 注意：这是一种简化。更精确的方法是解析PE头找到代码段(.text)
+        MODULEINFO modInfo = {};
+        if (GetModuleInformation(GetCurrentProcess(), g_hModule, &modInfo, sizeof(modInfo))) {
+            // 计算需要标记的代码区域
+            PVOID pCodeBase = (PVOID)g_remoteDllBase;
+            SIZE_T codeSize = modInfo.SizeOfImage; // 使用整个镜像大小是保守做法，最好只包含.text段
+
+            // 准备CFG目标信息
+            // 这里我们将整个代码区域标记为有效
+            CFG_CALL_TARGET_INFO targetInfo = {};
+            targetInfo.Offset = 0; // 从模块基址的偏移0开始
+            targetInfo.Flags = CFG_CALL_TARGET_VALID; // 标记为有效目标
+
+            // 调用 SetProcessValidCallTargets
+            if (SetProcessValidCallTargets(
+                GetCurrentProcess(), // 当前进程
+                pCodeBase,          // 目标DLL的基地址
+                codeSize,           // 区域大小
+                1,                  // 一个偏移信息结构
+                &targetInfo         // 偏移信息数组
+            )) {
+                OutputDebugStringA("Successfully bypassed CFG using SetProcessValidCallTargets. Entire DLL code section marked as valid.\n");
+            }
+            else {
+                DWORD bypassError = GetLastError();
+                LPSTR bypassErrorMessage = nullptr;
+                FormatMessageA(
+                    FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+                    nullptr,
+                    bypassError,
+                    MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+                    (LPSTR)&bypassErrorMessage,
+                    0,
+                    nullptr
+                );
+                OutputDebugStringA("SetProcessValidCallTargets also failed: ");
+                OutputDebugStringA(bypassErrorMessage);
+                LocalFree(bypassErrorMessage);
+
+                // 3. 如果两种方法都失败了，尝试最终的回退方案
+                OutputDebugStringA("Falling back to NtSetInformationVirtualMemory method...\n");
+                DisableCFG_NtSetInformationVirtualMemory();
+            }
+        }
+        else {
+            // 无法获取模块信息，尝试最终回退
+            DWORD modInfoError = GetLastError();
+            OutputDebugStringA("GetModuleInformation failed. Cannot determine code region for CFG bypass.\n");
+            DisableCFG_NtSetInformationVirtualMemory();
+        }
+    }
+    else {
+        OutputDebugStringA("CFG policy set successfully via SetProcessMitigationPolicy.\n");
+    }
+}
+
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID lpReserved) {
     if (reason == DLL_PROCESS_ATTACH) {
         g_hModule = hModule;
         SetDebugPrivilege();
+        ConfigureCFGBypass();
+
         if (g_remoteDllBase == 0) {
             g_remoteDllBase = (DWORD_PTR)hModule;
         }
@@ -409,127 +542,28 @@ JNIEXPORT void JNICALL Java_com_electron_Injector_executeJavascript(
 JNIEXPORT void JNICALL Java_com_electron_Injector_injectMainProcess
 (JNIEnv* env, jclass, jstring processName, jstring jsCode)
 {
-    // 获取目标进程ID
-    const wchar_t* targetProcess = (const wchar_t*)env->GetStringChars(processName, nullptr);
-    DWORD pid = FindProcessId(targetProcess);
-    env->ReleaseStringChars(processName, (const jchar*)targetProcess);
+    const jchar* pNameChars = env->GetStringChars(processName, nullptr);
+    if (!pNameChars) return;
+    std::wstring targetProcessName(reinterpret_cast<const wchar_t*>(pNameChars));
+    env->ReleaseStringChars(processName, pNameChars);
 
-    if (pid == 0) {
-        return; // 进程未找到
-    }
+    DWORD pid = FindProcessId(targetProcessName.c_str());
+    if (pid == 0) return;
 
-    // 打开目标进程
-    HANDLE hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, pid);
-    if (!hProcess) {
-        return;
-    }
+    const char* pCodeChars = env->GetStringUTFChars(jsCode, nullptr);
+    if (!pCodeChars) return;
+    std::string script(pCodeChars);
+    env->ReleaseStringUTFChars(jsCode, pCodeChars);
 
-    // 获取当前DLL路径
-    wchar_t dllPath[MAX_PATH];
-    if (!GetModuleFileNameW(g_hModule, dllPath, MAX_PATH)) {
-        CloseHandle(hProcess);
-        return;
-    }
+    wchar_t currentDllPath[MAX_PATH];
+    if (GetModuleFileNameW(g_hModule, currentDllPath, MAX_PATH) == 0) return;
 
-    // 在目标进程分配内存并写入DLL路径
-    size_t pathSize = (wcslen(dllPath) + 1) * sizeof(wchar_t);
-    LPVOID remoteDllPath = VirtualAllocEx(hProcess, NULL, pathSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-    if (!remoteDllPath) {
-        CloseHandle(hProcess);
-        return;
-    }
-
-    if (!WriteProcessMemory(hProcess, remoteDllPath, dllPath, pathSize, NULL)) {
-        VirtualFreeEx(hProcess, remoteDllPath, 0, MEM_RELEASE);
-        CloseHandle(hProcess);
-        return;
-    }
-
-    // 加载DLL到目标进程
-    LPTHREAD_START_ROUTINE loadLibraryAddr = (LPTHREAD_START_ROUTINE)GetProcAddress(
-        GetModuleHandle(L"kernel32.dll"), "LoadLibraryW");
-    HANDLE hThread = CreateRemoteThread(hProcess, NULL, 0, loadLibraryAddr, remoteDllPath, 0, NULL);
-    if (!hThread) {
-        VirtualFreeEx(hProcess, remoteDllPath, 0, MEM_RELEASE);
-        CloseHandle(hProcess);
-        return;
-    }
-
-    // 获取DLL基地址
-    WaitForSingleObject(hThread, INFINITE);
-    DWORD_PTR dllBaseAddr = 0;
-    GetExitCodeThread(hThread, (LPDWORD)&dllBaseAddr);
-    CloseHandle(hThread);
-    VirtualFreeEx(hProcess, remoteDllPath, 0, MEM_RELEASE);
-
-    if (dllBaseAddr == 0) {
-        CloseHandle(hProcess);
-        return;
-    }
-
-    // 计算导出函数偏移量
-    FARPROC localFunc = GetProcAddress(g_hModule, "ExportFunction");
-    if (!localFunc) {
-        CloseHandle(hProcess);
-        return;
-    }
-
-    //DWORD_PTR offset = (DWORD_PTR)localFunc - (DWORD_PTR)g_hModule;
-    LPVOID remoteFuncAddr = localFunc;
-
-    // 写入JavaScript代码到目标进程
-    const char* codeStr = env->GetStringUTFChars(jsCode, nullptr);
-    size_t codeSize = strlen(codeStr) + 1;
-
-    LPVOID remoteCode = VirtualAllocEx(hProcess, NULL, codeSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-    if (!remoteCode) {
-        env->ReleaseStringUTFChars(jsCode, codeStr);
-        CloseHandle(hProcess);
-        return;
-    }
-
-    if (!WriteProcessMemory(hProcess, remoteCode, codeStr, codeSize, NULL)) {
-        VirtualFreeEx(hProcess, remoteCode, 0, MEM_RELEASE);
-        env->ReleaseStringUTFChars(jsCode, codeStr);
-        CloseHandle(hProcess);
-        return;
-    }
-
-    env->ReleaseStringUTFChars(jsCode, codeStr);
-
-    // 创建远程线程执行导出函数
-    HANDLE hFuncThread = CreateRemoteThread(hProcess, nullptr, 0,
-        reinterpret_cast<LPTHREAD_START_ROUTINE>(remoteFuncAddr),
-        remoteCode, 0, nullptr);
-
-    if (hFuncThread) {
-        WaitForSingleObject(hFuncThread, INFINITE);
-        CloseHandle(hFuncThread);
-
-        LPTHREAD_START_ROUTINE freeLibrary = reinterpret_cast<LPTHREAD_START_ROUTINE>(
-            GetProcAddress(GetModuleHandle(L"kernel32.dll"), "FreeLibrary"));
-
-        if (freeLibrary && dllBaseAddr != 0) {
-            // 创建卸载线程（等待执行完成）
-            HANDLE hUnloadThread = CreateRemoteThread(
-                hProcess,
-                nullptr,
-                0,
-                freeLibrary,
-                reinterpret_cast<LPVOID>(dllBaseAddr),
-                0,
-                nullptr
-            );
-
-            if (hUnloadThread) {
-                WaitForSingleObject(hUnloadThread, 2000);  // 最多等待2秒
-                CloseHandle(hUnloadThread);
-            }
-        }
-    }
-
-    VirtualFreeEx(hProcess, remoteCode, 0, MEM_RELEASE);
-    CloseHandle(hProcess);
+    bool success = InjectorCore::InjectAndExecute(
+        pid,
+        currentDllPath,
+        script,
+        "ExportFunction"
+    );
 }
 
 
@@ -966,21 +1000,34 @@ bool InitV8ModuleAPI() {
 void ExecuteJsCode_Module(ThreadInfo* info, v8::Isolate* isolate) {
 }
 
+std::string WStringToString(const std::wstring& wstr) {
+    if (wstr.empty()) return std::string();
+
+    // 第一次调用获取目标缓冲区大小
+    int size_needed = WideCharToMultiByte(CP_UTF8, 0, &wstr[0], (int)wstr.size(), NULL, 0, NULL, NULL);
+
+    std::string strTo(size_needed, 0);
+    // 第二次调用执行实际转换
+    WideCharToMultiByte(CP_UTF8, 0, &wstr[0], (int)wstr.size(), &strTo[0], size_needed, NULL, NULL);
+    return strTo;
+}
+
 void ExecuteInV8Context(ThreadInfo* info) {
     // 获取线程名称
     if (!info->thread_name) {
         info->thread_name = GetThreadName(info->thread_id);
     }
-
     // 获取Isolate并执行JS
     if (v8::Isolate* isolate = GetSafeIsolate()) {
         info->has_isolate = true;
-        // 显示线程信息
-        //std::wstring_convert<std::codecvt_utf8<wchar_t>> converter;
-        //std::string msg = "Thread ID: " + std::to_string(info->thread_id)
-        //   + "\nName: " + converter.to_bytes(info->thread_name ? info->thread_name : L"<unknown>");
 
-        //MessageBoxA(NULL, msg.c_str(), "V8 Context Found", MB_ICONINFORMATION);
+        // 使用辅助函数替换 std::wstring_convert
+        std::string threadName = WStringToString(info->thread_name ? info->thread_name : L"<unknown>");
+
+        std::string msg = "Thread ID: " + std::to_string(info->thread_id)
+            + "\nName: " + threadName;
+
+        MessageBoxA(NULL, msg.c_str(), "V8 Context Found", MB_ICONINFORMATION);
         ExecuteJsCode(info, isolate);
         //pV8IsolateDispose(isolate);
     }
@@ -1000,9 +1047,8 @@ void NTAPI CheckIsolateAPC(ULONG_PTR param) {
     ThreadInfo* info = reinterpret_cast<ThreadInfo*>(param);
     if (!info) return;
     __try {
-        InstallV8DisposeHook();
+        //InstallV8DisposeHook();
         ExecuteInV8Context(info);
-        
     }
     __except (EXCEPTION_EXECUTE_HANDLER) {
         DWORD exceptionCode = GetExceptionCode();
@@ -1055,7 +1101,7 @@ extern "C" __declspec(dllexport) DWORD WINAPI ExportFunction(LPVOID lpParam) {
     DWORD activeAPCCount = 0;
 
     std::string msg = "枚举到的线程数量: " + std::to_string(threadIds.size());
-   // MessageBoxA(NULL, msg.c_str(), "线程数量", MB_OK);
+    MessageBoxA(NULL, msg.c_str(), "线程数量", MB_OK);
 
     // 提交APC请求
     for (DWORD tid : threadIds) {
@@ -1084,7 +1130,7 @@ extern "C" __declspec(dllexport) DWORD WINAPI ExportFunction(LPVOID lpParam) {
 
     char apcCountMsg[64];
     sprintf_s(apcCountMsg, "成功提交APC的线程数量: %lu", activeAPCCount);
-    //MessageBoxA(NULL, apcCountMsg, "APC提交结果", MB_OK | MB_ICONINFORMATION);
+    MessageBoxA(NULL, apcCountMsg, "APC提交结果", MB_OK | MB_ICONINFORMATION);
 
 
     if (activeAPCCount > 0) {
@@ -1258,12 +1304,17 @@ extern "C" __declspec(dllexport) void InitializeHooks() {
                         FALSE,
                         te32.th32ThreadID
                     );
-                    if (hThread) {
-                        DetourUpdateThread(hThread);
-                        DetourAttach((PVOID*)&v8_try_get_current, HookedV8IsolateGetCurrent);
-                        DetourAttach(&(PVOID&)OriginalIsolateNew, HookedIsolateNew);
-                        DetourTransactionCommit();
-                        CloseHandle(hThread);
+                    __try {
+                        if (hThread) {
+                            DetourUpdateThread(hThread);
+                            DetourAttach((PVOID*)&v8_try_get_current, HookedV8IsolateGetCurrent);
+                            DetourAttach(&(PVOID&)OriginalIsolateNew, HookedIsolateNew);
+                            DetourTransactionCommit();
+                            CloseHandle(hThread);
+                        }
+                    }
+                    __except (EXCEPTION_EXECUTE_HANDLER) {
+                        OutputDebugStringA("SEH bypass successful! Executing code in exception handler.\n");
                     }
                 }
             } while (Thread32Next(hSnapshot, &te32));

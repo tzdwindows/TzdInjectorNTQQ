@@ -3,7 +3,7 @@
 #include <stdexcept>
 #include <string>
 #include <v8.h>
-#include <detours.h>
+#include <detours/detours.h>
 #include <mutex>
 
 
@@ -222,7 +222,8 @@ extern v8::Local<v8::String> local_string_from_string(
 );
 extern void CallbackJavaLayer(const std::string& tag, const std::string& message);
 extern std::string CallbackJavaLayer_Return(const std::string& tag, const std::string& message);
-
+extern uintptr_t GetIsolateRoot(v8::Isolate* isolate);
+extern void PerformInvisibleHook(v8::Isolate* isolate, v8::Local<v8::Function> target, v8::Local<v8::Function> hook);
 extern std::string V8ValueToStdString(v8::Isolate* isolate, v8::Local<v8::Value> value);
 extern size_t v8_string_utf8_length(v8::Isolate* isolate, v8::Local<v8::String> local_string);
 extern std::string string_from_local_string(v8::Isolate* isolate, v8::Local<v8::String> local_string);

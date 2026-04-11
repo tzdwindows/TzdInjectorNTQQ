@@ -221,8 +221,88 @@ v8::Local<v8::String> local_string_from_string(
     return result.ToLocalChecked();
 }
 
+uintptr_t GetIsolateRoot(v8::Isolate* isolate) {
+    // 技巧：V8 经常把计算好的 Root 存在寄存器中，但在 C++ 层，
+    // 我们可以通过偏移尝试读取。通常在 isolate + 0x0 处。
+    return *reinterpret_cast<uintptr_t*>(isolate);
+}
+
+template<typename T>
+void SafeWrite(uintptr_t address, T value) {
+    DWORD oldProtect;
+    if (VirtualProtect((LPVOID)address, sizeof(T), PAGE_EXECUTE_READWRITE, &oldProtect)) {
+        *(T*)address = value;
+        VirtualProtect((LPVOID)address, sizeof(T), oldProtect, &oldProtect);
+    }
+}
+
+// 核心 Hook 函数
+void PerformAdvancedInvisibleHook(v8::Isolate* isolate,
+    v8::Local<v8::Function> target,
+    const std::string& callbackJs,
+    int mode,
+    bool captureReturn) {
+    v8::HandleScope handle_scope;
+    pHandleScopeCtor(&handle_scope, isolate);
+
+    v8::Local<v8::Context> context;
+    v8_get_current_context_prt(isolate, &context);
+
+    // 1. 构建闭包逻辑字符串
+    std::string wrapperLogic;
+    if (mode == 0)      wrapperLogic = "return (...args) => { (" + callbackJs + ").apply(this, args); return original.apply(this, args); }";
+    else if (mode == 1) wrapperLogic = "return (...args) => { const r = original.apply(this, args); (" + callbackJs + ").call(this, ...args, r); return r; }";
+    else                wrapperLogic = "return (" + callbackJs + ")";
+
+    // 2. 利用全局变量临时中转 original 函数
+    v8::Local<v8::Object> global;
+    V8ContextGlobal(context, &global);
+    v8::Local<v8::String> tempKey = local_string_from_string(isolate, "__hook_orig_ptr");
+    V8ObjectSet(global, nullptr, context, tempKey, target);
+
+    // 3. 构造并编译绑定脚本
+    // 我们直接在 JS 环境里把备份的 original 和你的 callback 揉在一起
+    std::string bindingJs = "(function(original) { " + wrapperLogic + " })(globalThis.__hook_orig_ptr)";
+
+    v8::MaybeLocal<v8::Script> binder_script = pCompile(context, local_string_from_string(isolate, bindingJs), nullptr);
+    if (binder_script.IsEmpty()) return;
+
+    // 获取 Script* 原始指针进行运行 (解决你提到的转换问题)
+    v8::Script* raw_script = *binder_script.ToLocalChecked();
+    v8::MaybeLocal<v8::Value> hook_wrapper_val;
+    v8_script_run_ex(raw_script, &hook_wrapper_val, context, v8::Local<v8::Data>());
+
+    if (hook_wrapper_val.IsEmpty()) return;
+    v8::Local<v8::Function> hook_wrapper = hook_wrapper_val.ToLocalChecked().As<v8::Function>();
+
+    // 4. 执行底层灵魂替换 (灵魂在于改 SFI，肉体在于改 Code Entry)
+    uintptr_t root = GetIsolateRoot(isolate);
+    uintptr_t addr_target = *(uintptr_t*)(*target);
+    uintptr_t addr_hook = *(uintptr_t*)(*hook_wrapper);
+
+    // 读取 SFI 压缩指针 (QQNT/V8 12.x 典型偏移 12 或 16)
+    uint32_t comp_sfi_target = *(uint32_t*)(addr_target + 12);
+    uint32_t comp_sfi_hook = *(uint32_t*)(addr_hook + 12);
+
+    uintptr_t sfi_target = root + (uintptr_t)comp_sfi_target;
+    uintptr_t sfi_hook = root + (uintptr_t)comp_sfi_hook;
+
+    // A. 替换 SFI 的 function_data (偏移 +8)
+    // 这是核心，改掉了函数的字节码定义
+    uint32_t hook_data = *(uint32_t*)(sfi_hook + 8);
+    SafeWrite<uint32_t>(sfi_target + 8, hook_data);
+
+    // B. 替换 JSFunction 的 Code Entry (偏移 +24)
+    // 这是为了穿透 JIT，强行重定向指令流到 hook_wrapper 的入口点
+    uintptr_t hook_code_entry = *(uintptr_t*)(addr_hook + 24);
+    SafeWrite<uintptr_t>(addr_target + 24, hook_code_entry);
+
+    // 5. 清理现场
+    pHandleScopeDtor(&handle_scope);
+}
+
 std::string V8ValueToStdString(v8::Isolate* isolate, v8::Local<v8::Value> value) {
-    // 实现需要根据逆向的Utf8Value构造函数
+    // for v8::String::Utf8Value
     struct V8Utf8Value {
         char* str;
         int length;
@@ -236,7 +316,7 @@ std::string V8ValueToStdString(v8::Isolate* isolate, v8::Local<v8::Value> value)
             ctor(this, isolate, value);
         }
     };
-
+    
     V8Utf8Value utf8(isolate, value);
     return std::string(utf8.str, utf8.length);
 }

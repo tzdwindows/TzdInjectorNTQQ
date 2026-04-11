@@ -18,8 +18,35 @@ typedef v8::MaybeLocal<v8::UnboundScript>(__fastcall* CompileUnboundInternalPtr)
     v8::ScriptCompiler::NoCacheReason no_cache_reason
     );
 
+typedef v8::MaybeLocal<v8::Module>(__fastcall* CompileModulePtr)(
+    v8::Local<v8::Context> context,
+    v8::ScriptCompiler::Source* source,
+    v8::Local<v8::String> referrer,
+    const v8::ScriptOrigin& origin
+    );
+
+typedef void(__fastcall* OriginalCallType)(
+    v8::Function* thisPtr,
+    v8::MaybeLocal<v8::Value>* returnValue,
+    v8::Local<v8::Context> context,
+    v8::Local<v8::Value> recv,
+    int argc,
+    v8::Local<v8::Value> argv[]
+    );
+
+typedef v8::MaybeLocal<v8::Object>(*OriginalNewInstanceWithSideEffectTypeType)(
+    v8::Function* thisPtr,
+    v8::Local<v8::Context> context,
+    int argc,
+    v8::Local<v8::Value> argv[],
+    v8::SideEffectType side_effect_type
+    );
+
 extern CompileFunctionPtr originalCompileFunction;
 extern CompileUnboundInternalPtr originalCompileUnboundInternal;
+extern CompileModulePtr originalCompileModule;
+extern OriginalCallType originalCall;
+extern OriginalNewInstanceWithSideEffectTypeType originalNewInstanceWithSideEffectType;
 
 extern V8_WARN_UNUSED_RESULT v8::MaybeLocal<v8::UnboundScript> HookCompileUnboundInternal(
     v8::internal::Isolate* isolateInternal, v8::ScriptCompiler::Source* source,
@@ -34,3 +61,4 @@ extern v8::MaybeLocal<v8::Function> HookCompileFunction(
 );
 
 extern void InitializationCompileHook();
+extern void InitializationCallHook();
